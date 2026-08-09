@@ -121,10 +121,21 @@ class JanelaXP(ctk.CTkToplevel):
             alvo.bind("<B1-Motion>", self._arrastar)
         return {"nivel": nivel, "eta": eta, "rodape": rodape, "cor": cor}
 
+    # nivel maximo de cada barra: chegando ali, nao ha proximo nivel pra estimar
+    TETO = {"base": 150, "job": 70}
+
     def atualizar_bloco(self, qual: str, nivel: int, pct: float,
                         eta: float | None, taxa: float | None) -> None:
         bloco = self.blocos[qual]
         bloco["nivel"].configure(text=f"level {nivel}")
+
+        # Barra no maximo ficava dizendo "measuring..." pra sempre: sem ganho a
+        # taxa e 0, o ETA vira None e a interface parecia travada. Agora ela diz
+        # o que e — nao ha o que medir.
+        if nivel >= self.TETO.get(qual, 10**9) and pct >= 99.9:
+            bloco["eta"].configure(text="MAX", text_color=bloco["cor"])
+            bloco["rodape"].configure(text="max level reached")
+            return
         if eta is None:
             bloco["eta"].configure(text="—", text_color=TEXTO_SUB)
             bloco["rodape"].configure(text=f"{pct:.1f}% done · measuring…")
