@@ -173,8 +173,28 @@ class Rastreador:
     def progresso(nivel: int, pct: float) -> float:
         return nivel * 100.0 + pct
 
+    # salto maior que isso (em % de nivel) nao e progresso: e leitura corrigida
+    SALTO_ABSURDO = 150.0
+
     def registrar(self, leitura: dict, agora: float | None = None) -> None:
         agora = time.time() if agora is None else agora
+
+        # O nivel vem de UMA leitura de tela, e o OCR erra (ja leu "17" no lugar
+        # de "71"). Quando ele se corrige, o progresso linearizado da um salto de
+        # dezenas de niveis e o ritmo vai pra casa dos milhares de %/h. Salto
+        # assim nao e XP ganho: e a leitura consertada. Recomeca a contagem.
+        if self.ultima:
+            for chave_n, chave_p in (("base_nivel", "base_pct"),
+                                     ("job_nivel", "job_pct")):
+                antes = self.progresso(self.ultima[chave_n], self.ultima[chave_p])
+                agora_prog = self.progresso(leitura[chave_n], leitura[chave_p])
+                if abs(agora_prog - antes) > self.SALTO_ABSURDO:
+                    self.amostras.clear()
+                    self.historico.clear()
+                    self.inicio = None
+                    self.primeira = None
+                    break
+
         if self.inicio is None:
             self.inicio = agora
             self.primeira = dict(leitura)
