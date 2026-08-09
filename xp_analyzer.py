@@ -30,7 +30,9 @@ from tkinter import messagebox, simpledialog
 
 import customtkinter as ctk
 
+import cadeia
 import comum
+import memoria
 import xp as motor_xp
 from xp_janela import JanelaXP
 
@@ -202,7 +204,79 @@ class XPAnalyzer(ctk.CTk):
             while time.time() < fim and not self.parar.is_set():
                 time.sleep(min(0.1, intervalo))
 
+    def _tentar_cadeia(self):
+        """Caminho gravado: resolve na hora, sem varrer e sem esperar XP."""
+        dados = cadeia.carregar(comum.RAIZ)
+        caminhos = dados.get("caminhos") or []
+        if not caminhos:
+            return None
+        try:
+            pid = memoria.achar_processo(self.cfg.get("janela_jogo") or "SpiritVale")
+            if not pid:
+                return None
+            proc = memoria.Processo(pid)
+            for c in caminhos:
+                base = cadeia.resolver(proc, c)
+                job = cadeia.resolver(proc, c["par"]) if c.get("par") else None
+                if base is None or job is None:
+                    continue
+                b, j = proc.ler_float(base), proc.ler_float(job)
+                if b is None or j is None or not (0 <= b <= 1 and 0 <= j <= 1):
+                    continue
+                leitor = motor_xp.LeitorMemoria(
+                    self.cfg.get("janela_jogo") or "SpiritVale")
+                leitor.proc, leitor.base, leitor.job = proc, base, job
+                leitor.definir_niveis(self.cfg.get("xp_nivel_base") or 1,
+                                      self.cfg.get("xp_nivel_job") or 1)
+                self.fila.put(("fonte", "found via saved pointer chain (instant)"))
+                return leitor
+            proc.fechar()
+        except Exception:
+            pass
+        return None
+
+    def _aprender_cadeia(self, leitor):
+        """Grava/refina o caminho ate as barras.
+
+        A primeira varredura devolve milhares de caminhos, quase todos
+        coincidencia desta sessao. Nas aberturas seguintes eles sao FILTRADOS
+        contra o endereco novo — e o que sobrevive a dois ou tres reinicios e
+        estavel de verdade.
+        """
+        try:
+            dados = cadeia.carregar(comum.RAIZ)
+            antigos = dados.get("caminhos") or []
+            if antigos:
+                bons = []
+                for c in antigos:
+                    if (cadeia.resolver(leitor.proc, c) == leitor.base
+                            and c.get("par")
+                            and cadeia.resolver(leitor.proc, c["par"]) == leitor.job):
+                        bons.append(c)
+                dados["caminhos"] = bons[:200]
+                dados["confirmacoes"] = int(dados.get("confirmacoes", 0)) + 1
+                cadeia.salvar(comum.RAIZ, dados)
+                self.fila.put(("fonte", f"pointer chain: {len(bons)} path(s) "
+                                        f"survived {dados['confirmacoes']} restart(s)"))
+                if bons:
+                    return
+            self.fila.put(("fonte", "mapping pointer chain (once)..."))
+            base = cadeia.varrer(leitor.proc, leitor.base, aviso=lambda t: None)
+            job = cadeia.varrer(leitor.proc, leitor.job, aviso=lambda t: None)
+            juntos = []
+            for a, b in zip(base[:200], job[:200]):
+                a = dict(a); a["par"] = b
+                juntos.append(a)
+            cadeia.salvar(comum.RAIZ, {"caminhos": juntos, "confirmacoes": 0})
+            self.fila.put(("fonte", f"pointer chain: {len(juntos)} candidate(s) "
+                                    "— reopen the game to refine"))
+        except Exception as erro:
+            self.fila.put(("fonte", f"pointer chain failed ({erro})"))
+
     def _ligar_memoria(self):
+        atalho = self._tentar_cadeia()
+        if atalho is not None:
+            return atalho
         """Acha as barras SEM OCR, so pelo comportamento delas.
 
         Nao ha mais dependencia de Tesseract: XP e a unica barra que so sobe,
@@ -217,6 +291,7 @@ class XPAnalyzer(ctk.CTk):
                 aviso=lambda n: self.fila.put(
                     ("deteccao", f"detecting… {n} candidates left")))
             if achou:
+                self._aprender_cadeia(leitor)
                 leitor.definir_niveis(self.cfg.get("xp_nivel_base") or 1,
                                       self.cfg.get("xp_nivel_job") or 1)
                 self.fila.put(("fonte", "reading from MEMORY (exact)"))
