@@ -290,11 +290,13 @@ class JanelaXP(ctk.CTkToplevel):
         derrubariam o ritmo medio e a estimativa ficaria sem sentido.
         """
         self.pausado = not self.pausado
-        self.botao_pausa.configure(text="▶" if self.pausado else "⏸",
+        self.botao_pausa.configure(text="►" if self.pausado else "⏸",
                                    text_color=VERDE if self.pausado else TEXTO_SUB)
-        self.titulo.configure(
-            text="XP Analyzer — paused" if self.pausado else "XP Analyzer",
-            text_color=LARANJA if self.pausado else TEXTO_SUB)
+        # O TEXTO do titulo nao muda de tamanho de proposito: a janela tem
+        # largura fixa, e um titulo maior empurrava os botoes pra fora do
+        # layout — o proprio botao de pause sumia depois de pausar. O estado
+        # aparece pela cor do titulo e pelo simbolo do botao.
+        self.titulo.configure(text_color=LARANJA if self.pausado else TEXTO_SUB)
         if self.ao_pausar:
             self.ao_pausar(self.pausado)
 

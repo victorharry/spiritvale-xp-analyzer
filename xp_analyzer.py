@@ -236,8 +236,9 @@ class XPAnalyzer(ctk.CTk):
         self.janela.atualizar_bloco("job", leitura["job_nivel"],
                                     leitura["job_pct"], r.eta("job"),
                                     r.taxa("job"))
+        marca = "PAUSED  ·  " if self.pausado else ""
         self.janela.detalhe.configure(
-            text=f"session  class +{r.ganho_total('base') or 0:.1f}%"
+            text=marca + f"session  class +{r.ganho_total('base') or 0:.1f}%"
                  f"  ·  job +{r.ganho_total('job') or 0:.1f}%"
                  f"  ·  {motor_xp.formatar_tempo(r.duracao())}")
         self.janela.desenhar(r.historico, r.duracao())
