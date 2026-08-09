@@ -311,9 +311,10 @@ class XPAnalyzer(ctk.CTk):
                     self._mostrar(dados)
                 elif tipo == "erro":
                     self.janela.avisar(
-                        "couldn't read the bar",
-                        "check the calibration (calibrar.py --modo xp)"
-                        " and that the game is visible")
+                        "looking for the XP bars",
+                        "keep playing and gaining XP for a few seconds —
+"
+                        "that's how they're identified")
                 elif tipo == "deteccao":
                     self.janela.detalhe.configure(text=dados)
                 elif tipo == "fonte":

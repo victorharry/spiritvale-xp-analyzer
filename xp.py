@@ -347,23 +347,31 @@ class LeitorMemoria:
                     continue
                 b, j = b * 100, j * 100
                 # queda so vale se for virada de nivel (cheio -> quase vazio)
-                caiu_b = b < e["base"] - 0.01 and not (e["base"] > 60 and b < 40)
-                caiu_j = j < e["job"] - 0.01 and not (e["job"] > 60 and j < 40)
+                # folga de 0,05 ponto: o Unity ANIMA o preenchimento, entao a
+                # barra passa do valor e volta. Sem isso, a propria barra certa
+                # era descartada por uma oscilacao de arredondamento.
+                caiu_b = b < e["base"] - 0.05 and not (e["base"] > 60 and b < 40)
+                caiu_j = j < e["job"] - 0.05 and not (e["job"] > 60 and j < 40)
                 if caiu_b or caiu_j:
                     continue                      # XP nao anda pra tras
                 if b > e["base"] + 0.001 or j > e["job"] + 0.001:
                     e["subiu"] += 1
-                e["base"], e["job"] = b, j
+                e["base"], e["job"] = max(b, e["base"]), max(j, e["job"])
                 sobrou.append(e)
             estado = sobrou
             if aviso:
                 aviso(len(estado))
 
-        # entre os que nunca cairam, fica quem realmente ANDOU
+        # Entre os que nunca cairam, fica quem realmente ANDOU. Sobrar mais de
+        # um e NORMAL, nao erro: o mesmo valor aparece espelhado em varios
+        # enderecos (buffers de UI e de replicacao). Exigir exatamente um fazia
+        # a deteccao falhar justamente quando dava certo. Fica o que mais se
+        # mexeu — o espelho mais "vivo", que e o que a barra desenha.
         andaram = [e for e in estado if e["subiu"] > 0]
-        if len(andaram) != 1:
+        if not andaram:
             self.fechar()
             return False
+        andaram.sort(key=lambda e: -e["subiu"])
         escolhido = andaram[0]["c"]
         self.base, self.job = escolhido["base"], escolhido["job"]
         return True
