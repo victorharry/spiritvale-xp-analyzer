@@ -81,9 +81,19 @@ class XPAnalyzer(ctk.CTk):
                 "a sua; depois disso o valor vem da memoria.\n\n"
                 "Abrir o assistente de calibracao agora?"):
             return False
-        raiz = Path(__file__).resolve().parent
-        subprocess.run([sys.executable, str(raiz / "calibrar.py"),
-                        "--modo", "xp"], cwd=str(raiz))
+        if getattr(sys, "frozen", False):
+            # dentro do .exe nao ha script pra chamar: roda o assistente aqui
+            import calibrar
+            regioes = calibrar.Assistente(calibrar.PASSOS_XP, "xp").executar()
+            if regioes:
+                cfg = comum.carregar_config()
+                cfg["tela"] = list(comum.tamanho_tela())
+                cfg.update(regioes)
+                comum.salvar_config(cfg)
+        else:
+            raiz = Path(__file__).resolve().parent
+            subprocess.run([sys.executable, str(raiz / "calibrar.py"),
+                            "--modo", "xp"], cwd=str(raiz))
         self.cfg = comum.carregar_config()
         if self.cfg.get("xp_regiao"):
             return True

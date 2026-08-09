@@ -1,15 +1,7 @@
-"""Passo 1 - marca na tela onde ficam os elementos do mercado.
+"""Marca na tela onde fica a barra de XP.
 
-Uso:
-    .venv\\Scripts\\python.exe calibrar.py                (regioes de busca)
-    .venv\\Scripts\\python.exe calibrar.py --modo venda    (regioes de venda)
-    .venv\\Scripts\\python.exe calibrar.py --modo mercado  (so o icone do HUD)
-    .venv\\Scripts\\python.exe calibrar.py --modo reconexao (telas de login)
-
-Funciona um passo por vez: uma janelinha diz o que deixar na tela, voce arruma
-o jogo do jeito pedido, e so entao manda congelar. Assim da pra calibrar coisas
-que so aparecem depois de clicar em algo no jogo - e a janelinha some do print
-antes da captura, entao ela nunca entra no recorte.
+Uma janelinha diz o que deixar na tela; voce arruma o jogo e so entao manda
+congelar. Ela some do print antes da captura, entao nunca entra no recorte.
 """
 
 from __future__ import annotations
@@ -25,111 +17,18 @@ from PIL import Image, ImageTk
 import comum
 
 # (chave, o que deixar na tela, o que marcar)
-PASSOS_MERCADO = [
-    ("botao_mercado",
-     "Deixe o HUD do jogo a mostra (sem menus abertos por cima).",
-     "o ICONE DO MERCADO, no canto inferior direito"),
-]
-
-PASSOS_BUSCA = PASSOS_MERCADO + [
-    ("campo_busca",
-     "Abra o mercado na aba de compra (Buy Items).",
-     "o CAMPO DE BUSCA (Search)"),
-    ("area_resultados",
-     "Continue na mesma tela, com a lista de ofertas visivel.",
-     "a LISTA DE OFERTAS inteira - quantidade, nome e preco"),
-]
-
-PASSOS_VENDA = [
-    ("venda_botao_listar",
-     "Abra o mercado. O botao azul precisa estar visivel.",
-     "o botao azul LIST ITEMS FOR SALE"),
-    ("venda_abas",
-     "Clique no botao azul pra abrir o painel de venda.",
-     "a FILEIRA INTEIRA de abas de categoria, da primeira ate a ultima "
-     "(o programa divide ela pra achar cada aba)"),
-    ("venda_busca",
-     "Continue no painel de venda.",
-     "o CAMPO DE BUSCA do painel de venda"),
-    ("venda_resultado",
-     "Digite o nome de um item na busca, ate aparecer resultado.",
-     "a PRIMEIRA LINHA do resultado - e nela que o programa vai clicar"),
-    ("venda_preco1",
-     "Clique em itens ate ter DOIS na lista da direita.",
-     "o CAMPO DE PRECO da 1a linha da lista"),
-    ("venda_preco2",
-     "Mesma tela, com os dois itens ainda na lista.",
-     "o CAMPO DE PRECO da 2a linha - daqui sai o espacamento entre linhas"),
-    ("venda_lista",
-     "Mesma tela.",
-     "a LISTA DA DIREITA inteira (o bloco do 'Items: n / 30')"),
-    ("venda_botao_vender",
-     "Mesma tela.",
-     "o botao laranja SELL ITEMS"),
-]
-
-PASSOS_COMPRA = [
-    ("vigilancia_primeira_linha",
-     "Na aba de compra, busque algo que retorne varias ofertas.",
-     "a PRIMEIRA LINHA da lista (a oferta mais barata) — e nela que o duplo "
-     "clique vai cair; marque o meio da linha, longe do campo de busca"),
-    ("vigilancia_modal",
-     "Na aba de compra, de duplo clique numa oferta ate aparecer o modal "
-     "'Purchase ... for ...?'.",
-     "o TEXTO do modal inteiro (nome do item, quantidade e preco)"),
-    ("vigilancia_botao_ok",
-     "Mesmo modal aberto.",
-     "o botao OK"),
-    ("vigilancia_botao_close",
-     "Mesmo modal aberto.",
-     "o botao CLOSE — e nele que o programa clica quando a conferencia falha"),
-    ("vigilancia_botao_collect",
-     "Feche o modal. Olhe a coluna DELIVERY BOX, no canto direito da tela.",
-     "o botao marrom COLLECT — e o que recolhe o que voce acabou de comprar "
-     "(pule se nao for usar a revenda automatica)"),
-]
-
-PASSOS_RECONEXAO = [
-    ("reconectar_deteccao",
-     "Deixe a tela SELECT SERVER a mostra (a que aparece quando o jogo abre ou "
-     "quando o server te derruba).",
-     "a BARRA ESCURA com o titulo 'Select Server' — e por ela que o programa "
-     "reconhece que voce caiu pra tela de login"),
-    ("reconectar_ok",
-     "SE o aviso 'You have disconnected from the server' estiver na tela, otimo; "
-     "se nao estiver, clique em Pular neste passo.",
-     "o botao azul Ok do aviso (pule se ele nao estiver aparecendo)"),
-    ("reconectar_connect",
-     "Continue na tela Select Server (SA ja vem selecionado no topo).",
-     "o botao azul CONNECT, la embaixo"),
-    ("reconectar_play_deteccao",
-     "Clique em Connect e espere chegar na tela de ESCOLHER PERSONAGEM.",
-     "o botao azul PLAY CHARACTER e um pouco em volta — serve pra reconhecer "
-     "esta tela E pra clicar (marque o botao com uma folga)"),
-    ("reconectar_play",
-     "Mesma tela de personagem.",
-     "so o botao azul PLAY CHARACTER, bem no ponto de clicar"),
-]
-
 PASSOS_XP = [
     ("xp_regiao",
      "Deixe o HUD do jogo a mostra, com a barra de XP visivel (aquela com "
      "'Base Level ... % ... % ... Job Level').",
-     "a BARRA DE XP INTEIRA — do numero do nivel base, na esquerda, ate o "
+     "a BARRA DE XP INTEIRA - do numero do nivel base, na esquerda, ate o "
      "numero do nivel de job, na direita; pegue os dois hexagonos junto"),
 ]
 
-MODOS = {"busca": PASSOS_BUSCA, "venda": PASSOS_VENDA, "mercado": PASSOS_MERCADO,
-         "compra": PASSOS_COMPRA, "reconexao": PASSOS_RECONEXAO, "xp": PASSOS_XP}
+MODOS = {"xp": PASSOS_XP}
 
 # Regioes cuja aparencia vira "assinatura" da tela (deteccao por semelhanca).
-ASSINATURAS = {
-    "area_resultados": "assinatura_mercado",
-    "campo_busca": "assinatura_busca",
-    "botao_mercado": "assinatura_icone",
-    "reconectar_deteccao": "reconectar_assinatura",
-    "reconectar_play_deteccao": "reconectar_play_assinatura",
-}
+ASSINATURAS: dict[str, str] = {}   # a barra de XP nao usa assinatura
 
 
 def capturar_tela() -> Image.Image:
@@ -310,10 +209,9 @@ def main() -> None:
     comum.preparar_console()
     comum.ativar_dpi()
 
-    parser = argparse.ArgumentParser(description="Calibra as regioes da tela do mercado.")
-    parser.add_argument("--modo", choices=sorted(MODOS), default="busca",
-                        help="'busca' (padrao), 'venda', 'mercado', 'compra' ou "
-                             "'reconexao'")
+    parser = argparse.ArgumentParser(description="Calibra a barra de XP.")
+    parser.add_argument("--modo", choices=sorted(MODOS), default="xp",
+                        help="so existe o modo xp")
     args = parser.parse_args()
 
     assistente = Assistente(MODOS[args.modo], args.modo)

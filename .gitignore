@@ -4,3 +4,6 @@ __pycache__/
 config.json
 debug/
 *.png
+build/
+dist/
+*.spec

@@ -11,7 +11,13 @@ from pathlib import Path
 import pytesseract
 from PIL import Image, ImageChops, ImageFilter, ImageOps
 
-RAIZ = Path(__file__).resolve().parent
+# Empacotado (.exe), __file__ aponta pra uma pasta temporaria que some ao
+# fechar — o config e a calibracao precisam morar em algum lugar que dure.
+if getattr(sys, "frozen", False):
+    RAIZ = Path(os.environ.get("APPDATA") or Path.home()) / "XP Analyzer"
+    RAIZ.mkdir(parents=True, exist_ok=True)
+else:
+    RAIZ = Path(__file__).resolve().parent
 CAMINHO_CONFIG = RAIZ / "config.json"
 
 TESSERACT_PADRAO = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
