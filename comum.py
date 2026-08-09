@@ -8,7 +8,12 @@ import re
 import sys
 from pathlib import Path
 
-import pytesseract
+# OCR e opcional: o XP Analyzer identifica as barras pelo comportamento delas,
+# nao lendo a tela. Quem quiser as ferramentas de varredura ainda pode usar.
+try:
+    import pytesseract
+except ModuleNotFoundError:
+    pytesseract = None
 from PIL import Image, ImageChops, ImageFilter, ImageOps
 
 # Empacotado (.exe), __file__ aponta pra uma pasta temporaria que some ao
@@ -241,6 +246,9 @@ def salvar_config(cfg: dict) -> None:
 
 
 def configurar_tesseract(cfg: dict | None = None) -> None:
+    if pytesseract is None:
+        raise SystemExit("pytesseract nao esta instalado (o app nao precisa "
+                         "dele; so as ferramentas de varredura usam OCR).")
     cfg = cfg or carregar_config()
     caminho = cfg.get("tesseract") or TESSERACT_PADRAO
     if not os.path.exists(caminho):

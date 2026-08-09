@@ -285,6 +285,14 @@ class LeitorMemoria:
         self.base_nivel = self.job_nivel = None
         self._ultimo = None
 
+    def definir_niveis(self, base: int, job: int) -> None:
+        """Os niveis nao estao na barra (ela so guarda o preenchimento).
+
+        Voce informa uma vez; dai em diante subir de nivel e detectado pela
+        queda brusca e o numero anda sozinho.
+        """
+        self.base_nivel, self.job_nivel = int(base), int(job)
+
     def localizar(self, referencia: dict, tolerancia: float = 3.0) -> bool:
         """`referencia` e uma leitura de OCR, so pra desempatar os candidatos."""
         pid = self._memoria.achar_processo(self.processo)
@@ -302,6 +310,62 @@ class LeitorMemoria:
         self.job = bons[0]["job"]
         self.base_nivel = referencia["base_nivel"]
         self.job_nivel = referencia["job_nivel"]
+        return True
+
+    def localizar_por_comportamento(self, segundos: float = 40.0,
+                                    passo: float = 0.5, aviso=None) -> bool:
+        """Acha as barras sem OCR nenhum, olhando como elas se COMPORTAM.
+
+        A assinatura sozinha devolve ~1.600 barras de UI parecidas. O que separa
+        a de XP de todas as outras e o jeito de mexer: XP so sobe, nunca desce,
+        e as duas (classe e job) sobem JUNTAS quando voce mata algo. HP e MP
+        oscilam pra cima e pra baixo; barra de cast zera; cooldown volta ao
+        cheio. Nada disso sobrevive ao filtro.
+
+        Precisa que voce ganhe XP durante a medicao — e o unico sinal que
+        identifica a barra sem depender de ler a tela.
+        """
+        pid = self._memoria.achar_processo(self.processo)
+        if not pid:
+            return False
+        self.proc = self._memoria.Processo(pid)
+        vivos = self._achar.achar_barras(self.proc)
+        if not vivos:
+            self.fechar()
+            return False
+
+        estado = [{"c": c, "base": c["base_pct"], "job": c["job_pct"],
+                   "subiu": 0} for c in vivos]
+        fim = time.time() + segundos
+        while time.time() < fim and len(estado) > 1:
+            time.sleep(passo)
+            sobrou = []
+            for e in estado:
+                b = self.proc.ler_float(e["c"]["base"])
+                j = self.proc.ler_float(e["c"]["job"])
+                if b is None or j is None:
+                    continue
+                b, j = b * 100, j * 100
+                # queda so vale se for virada de nivel (cheio -> quase vazio)
+                caiu_b = b < e["base"] - 0.01 and not (e["base"] > 60 and b < 40)
+                caiu_j = j < e["job"] - 0.01 and not (e["job"] > 60 and j < 40)
+                if caiu_b or caiu_j:
+                    continue                      # XP nao anda pra tras
+                if b > e["base"] + 0.001 or j > e["job"] + 0.001:
+                    e["subiu"] += 1
+                e["base"], e["job"] = b, j
+                sobrou.append(e)
+            estado = sobrou
+            if aviso:
+                aviso(len(estado))
+
+        # entre os que nunca cairam, fica quem realmente ANDOU
+        andaram = [e for e in estado if e["subiu"] > 0]
+        if len(andaram) != 1:
+            self.fechar()
+            return False
+        escolhido = andaram[0]["c"]
+        self.base, self.job = escolhido["base"], escolhido["job"]
         return True
 
     def ler(self) -> dict | None:

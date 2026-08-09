@@ -8,10 +8,13 @@ arrastavel sobre o jogo, quanto falta pro proximo nivel de classe e de job.
 Nao ha janela principal: a propria sobreposicao E o programa. Fechar nela
 fecha tudo.
 
-Como funciona: a barra do jogo e translucida, entao o OCR sozinho nao serve
-(o nome de um jogador passando atras dela e texto branco na mesma fonte). O
-valor vem da MEMORIA — uma unica leitura de tela serve so pra desempatar qual
-das barras de UI e a sua, e depois disso o OCR sai de cena.
+Sem OCR e sem dependencia externa: as barras sao identificadas pelo COMPORTA-
+MENTO. Entre as ~1.600 barras de UI do jogo, a de XP e a unica que so sobe e
+nunca desce, e classe e job sobem juntas quando voce mata algo. HP e MP
+oscilam, cast zera, cooldown volta ao cheio — nada disso passa no filtro.
+
+Os numeros dos niveis voce informa uma vez (a barra guarda so o preenchimento);
+dai em diante eles sobem sozinhos, detectados pela queda brusca da barra.
 """
 
 from __future__ import annotations
@@ -23,13 +26,12 @@ import threading
 import time
 import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox
+from tkinter import messagebox, simpledialog
 
 import customtkinter as ctk
 
 import comum
 import xp as motor_xp
-from comum import capturar as capturar_regiao
 from xp_janela import JanelaXP
 
 
@@ -41,13 +43,8 @@ class XPAnalyzer(ctk.CTk):
         self.withdraw()                    # a raiz nunca aparece
         self.cfg = comum.carregar_config()
         comum.ativar_dpi()
-        try:
-            comum.configurar_tesseract(self.cfg)
-            self.erro_tesseract = None
-        except SystemExit as erro:
-            self.erro_tesseract = str(erro)
 
-        if not self.cfg.get("xp_regiao") and not self._calibrar():
+        if not self._pedir_niveis():
             self.destroy()
             raise SystemExit(1)
 
@@ -67,6 +64,27 @@ class XPAnalyzer(ctk.CTk):
 
         threading.Thread(target=self._worker, daemon=True).start()
         self._drenar()
+
+    def _pedir_niveis(self) -> bool:
+        """Pergunta os niveis uma vez — a barra guarda so o preenchimento.
+
+        Dai em diante eles sobem sozinhos: subir de nivel e detectado pela queda
+        brusca da barra, e o numero novo fica gravado pra proxima sessao.
+        """
+        if self.cfg.get("xp_nivel_base") and self.cfg.get("xp_nivel_job"):
+            return True
+        base = simpledialog.askinteger(
+            "XP Analyzer", "What's your CLASS level right now?",
+            minvalue=1, maxvalue=999)
+        if not base:
+            return False
+        job = simpledialog.askinteger(
+            "XP Analyzer", "And your JOB level?", minvalue=1, maxvalue=999)
+        if not job:
+            return False
+        self.cfg["xp_nivel_base"], self.cfg["xp_nivel_job"] = base, job
+        comum.salvar_config(self.cfg)
+        return True
 
     def _calibrar(self) -> bool:
         """Chama o assistente de calibracao da barra, na primeira vez.
@@ -135,7 +153,6 @@ class XPAnalyzer(ctk.CTk):
 
     def _worker(self):
         """Mesma logica do Scanner: memoria quando da, OCR de reserva."""
-        intervalo_ocr = max(2.0, float(self.cfg.get("xp_intervalo", 10)))
         intervalo_mem = max(0.1, float(self.cfg.get("xp_intervalo_memoria", 0.25)))
         leitor = self._ligar_memoria()
         ate_retentar = 0
@@ -156,12 +173,6 @@ class XPAnalyzer(ctk.CTk):
                     leitor = None
                     ate_retentar = int(self.cfg.get("xp_retentar_memoria", 30))
                     self.fila.put(("fonte", "memory link lost — back to OCR"))
-            if leitura is None and not self.erro_tesseract:
-                try:
-                    leitura = motor_xp.ler_barra(
-                        capturar_regiao(self.cfg["xp_regiao"]), conhecido)
-                except Exception:
-                    leitura = None
 
             if leitura and self.pausado:
                 pass          # segue lendo (o nivel continua conferido), mas
@@ -170,6 +181,11 @@ class XPAnalyzer(ctk.CTk):
                 falhas = recusadas = 0
                 conhecido = leitura["base_nivel"]
                 self.rastreador.registrar(leitura, time.time() - self.deslocamento)
+                if (leitura["base_nivel"] != self.cfg.get("xp_nivel_base")
+                        or leitura["job_nivel"] != self.cfg.get("xp_nivel_job")):
+                    self.cfg["xp_nivel_base"] = leitura["base_nivel"]
+                    self.cfg["xp_nivel_job"] = leitura["job_nivel"]
+                    comum.salvar_config(self.cfg)   # sobreviveu ao level up
                 self.fila.put(("xp", leitura))
             else:
                 falhas += 1
@@ -181,29 +197,31 @@ class XPAnalyzer(ctk.CTk):
                 if falhas in (3, 30):
                     self.fila.put(("erro", falhas))
 
-            intervalo = intervalo_mem if leitor is not None else intervalo_ocr
+            intervalo = intervalo_mem if leitor is not None else 5.0
             fim = time.time() + intervalo
             while time.time() < fim and not self.parar.is_set():
                 time.sleep(min(0.1, intervalo))
 
     def _ligar_memoria(self):
-        if (self.cfg.get("xp_fonte") or "auto").lower() == "ocr":
-            return None
-        if self.erro_tesseract:
-            self.fila.put(("fonte", "OCR unavailable — can't confirm the bar"))
-            return None
+        """Acha as barras SEM OCR, so pelo comportamento delas.
+
+        Nao ha mais dependencia de Tesseract: XP e a unica barra que so sobe,
+        e as duas sobem juntas. Basta voce estar farmando enquanto ele mede.
+        """
         try:
-            referencia = motor_xp.ler_barra(capturar_regiao(self.cfg["xp_regiao"]))
-            if not referencia:
-                self.fila.put(("fonte", "no screen reading to confirm"))
-                return None
             leitor = motor_xp.LeitorMemoria(
                 (self.cfg.get("janela_jogo") or "SpiritVale"))
-            self.fila.put(("fonte", "locating bars in memory..."))
-            if leitor.localizar(referencia):
+            self.fila.put(("fonte", "detecting XP bars — keep farming..."))
+            achou = leitor.localizar_por_comportamento(
+                segundos=float(self.cfg.get("xp_deteccao_segundos", 40)),
+                aviso=lambda n: self.fila.put(
+                    ("deteccao", f"detecting… {n} candidates left")))
+            if achou:
+                leitor.definir_niveis(self.cfg.get("xp_nivel_base") or 1,
+                                      self.cfg.get("xp_nivel_job") or 1)
                 self.fila.put(("fonte", "reading from MEMORY (exact)"))
                 return leitor
-            self.fila.put(("fonte", "not found in memory — using OCR"))
+            self.fila.put(("fonte", "couldn't identify the bars — retrying"))
         except Exception as erro:
             self.fila.put(("fonte", f"memory unavailable ({erro})"))
         return None
@@ -221,6 +239,8 @@ class XPAnalyzer(ctk.CTk):
                         "couldn't read the bar",
                         "check the calibration (calibrar.py --modo xp)"
                         " and that the game is visible")
+                elif tipo == "deteccao":
+                    self.janela.detalhe.configure(text=dados)
                 elif tipo == "fonte":
                     print(dados)          # so no console: o titulo fica limpo
         except queue.Empty:
