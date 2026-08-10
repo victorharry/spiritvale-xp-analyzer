@@ -188,6 +188,16 @@ class XPAnalyzer(ctk.CTk):
             self.leitor = leitor
             if leitor is not None:
                 leitura = leitor.ler()
+                # par errado costuma ficar cravado em 0% e nunca andar: depois
+                # de um tempo assim, e melhor procurar de novo do que insistir
+                if leitura and leitura["base_pct"] == 0.0 and leitura["job_pct"] == 0.0:
+                    zerados = getattr(self, "_zerados", 0) + 1
+                    self._zerados = zerados
+                    if zerados > 120:      # ~30s a 4 leituras por segundo
+                        self._zerados = 0
+                        leitura = None
+                else:
+                    self._zerados = 0
                 if leitura is None:
                     leitor.fechar()
                     leitor = None

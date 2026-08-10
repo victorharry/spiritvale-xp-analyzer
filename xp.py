@@ -271,7 +271,12 @@ class LeitorMemoria:
     que dispensa ler o numero de novo.
     """
 
-    QUEDA = 40.0   # pontos percentuais de queda que contam como "subiu de nivel"
+    # Subir de nivel e a barra indo de QUASE CHEIA a QUASE VAZIA. Aceitar
+    # "caiu 40 pontos" era frouxo demais: num par errado, qualquer oscilacao
+    # virava level up e o nivel subia sem parar (chegou a 160, acima do teto).
+    CHEIA = 85.0
+    VAZIA = 20.0
+    TETO = {"base": 150, "job": 70}
 
     def __init__(self, processo: str = "SpiritVale"):
         import achar_barras
@@ -285,13 +290,19 @@ class LeitorMemoria:
         self.base_nivel = self.job_nivel = None
         self._ultimo = None
 
+    def niveis_plausiveis(self) -> bool:
+        """Nivel acima do teto do jogo significa que algo esta errado."""
+        return (1 <= (self.base_nivel or 0) <= self.TETO["base"]
+                and 1 <= (self.job_nivel or 0) <= self.TETO["job"])
+
     def definir_niveis(self, base: int, job: int) -> None:
         """Os niveis nao estao na barra (ela so guarda o preenchimento).
 
         Voce informa uma vez; dai em diante subir de nivel e detectado pela
         queda brusca e o numero anda sozinho.
         """
-        self.base_nivel, self.job_nivel = int(base), int(job)
+        self.base_nivel = max(1, min(int(base), self.TETO["base"]))
+        self.job_nivel = max(1, min(int(job), self.TETO["job"]))
 
     def localizar(self, referencia: dict, tolerancia: float = 3.0) -> bool:
         """`referencia` e uma leitura de OCR, so pra desempatar os candidatos."""
@@ -387,9 +398,11 @@ class LeitorMemoria:
             return None   # o objeto foi liberado: melhor admitir do que chutar
         base_pct, job_pct = base * 100, job * 100
         if self._ultimo:
-            if self._ultimo["base_pct"] - base_pct > self.QUEDA:
+            if (self._ultimo["base_pct"] >= self.CHEIA and base_pct <= self.VAZIA
+                    and self.base_nivel < self.TETO["base"]):
                 self.base_nivel += 1
-            if self._ultimo["job_pct"] - job_pct > self.QUEDA:
+            if (self._ultimo["job_pct"] >= self.CHEIA and job_pct <= self.VAZIA
+                    and self.job_nivel < self.TETO["job"]):
                 self.job_nivel += 1
         leitura = {"base_nivel": self.base_nivel, "base_pct": base_pct,
                    "job_nivel": self.job_nivel, "job_pct": job_pct}
