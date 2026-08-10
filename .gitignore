@@ -7,3 +7,5 @@ debug/
 build/
 dist/
 *.spec
+instalador/
+*.zip
