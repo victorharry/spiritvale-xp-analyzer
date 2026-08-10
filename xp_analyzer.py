@@ -61,7 +61,9 @@ class XPAnalyzer(ctk.CTk):
         self._pausa_em = 0.0
         self.janela = JanelaXP(self, ao_fechar=self.encerrar,
                                ao_zerar=self.zerar, ao_pausar=self.pausar,
-                               ao_corrigir_nivel=self.corrigir_nivel)
+                               ao_corrigir_nivel=self.corrigir_nivel,
+                               ao_zoom=self.guardar_zoom,
+                               escala=float(self.cfg.get('xp_escala', 1.0)))
         pos = self.cfg.get("xp_overlay_pos") or []
         self.janela.posicionar(*(int(p) for p in pos)) if len(pos) == 2 \
             else self.janela.posicionar(60, 60)
@@ -124,6 +126,10 @@ class XPAnalyzer(ctk.CTk):
         return False
 
     # -- ciclo ------------------------------------------------------------
+
+    def guardar_zoom(self, escala: float):
+        self.cfg["xp_escala"] = escala
+        comum.salvar_config(self.cfg)
 
     def corrigir_nivel(self, qual: str):
         """Clicou no numero do nivel: deixa acertar sem editar o config."""

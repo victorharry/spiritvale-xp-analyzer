@@ -33,12 +33,15 @@ class JanelaXP(ctk.CTkToplevel):
     """
 
     def __init__(self, pai, ao_fechar=None, ao_zerar=None, ao_pausar=None,
-                 ao_corrigir_nivel=None):
+                 ao_corrigir_nivel=None, ao_zoom=None, escala=1.0):
         super().__init__(pai, fg_color=CARTAO)
         self.ao_fechar = ao_fechar
         self.ao_zerar = ao_zerar
         self.ao_pausar = ao_pausar
         self.ao_corrigir_nivel = ao_corrigir_nivel
+        self.ao_zoom = ao_zoom
+        self.escala_ui = float(escala)
+        ctk.set_widget_scaling(self.escala_ui)
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.attributes("-alpha", 0.92)
@@ -63,6 +66,14 @@ class JanelaXP(ctk.CTkToplevel):
             hover_color=BORDA, text_color=TEXTO_SUB, font=(FONTE, 14),
             command=self._alternar_pausa)
         self.botao_pausa.pack(side="right", padx=(0, 2))
+        # Zoom: a janela foi dimensionada num monitor 4K e ocupa espaco demais
+        # em telas menores. Aqui voce encolhe/aumenta tudo junto.
+        for texto, passo in (("+", 0.1), ("−", -0.1)):
+            ctk.CTkButton(topo, text=texto, width=22, height=26,
+                          fg_color="transparent", hover_color=BORDA,
+                          text_color=TEXTO_SUB, font=(FONTE, 14),
+                          command=lambda d=passo: self._zoom(d)
+                          ).pack(side="right", padx=(0, 1))
         self.pausado = False
 
         # um bloco por barra: cada uma tem o proprio tempo pro nivel seguinte,
@@ -73,7 +84,8 @@ class JanelaXP(ctk.CTkToplevel):
             self.blocos[qual] = self._bloco(corpo, rotulo, cor, qual)
 
         # grafico com as duas curvas, nas mesmas cores dos blocos
-        self.grafico = tk.Canvas(corpo, width=340, height=155, bg=CARTAO2,
+        self.grafico = tk.Canvas(corpo, width=int(340 * self.escala_ui),
+                                 height=int(155 * self.escala_ui), bg=CARTAO2,
                                  highlightthickness=0, bd=0)
         self.grafico.pack(padx=16, pady=(4, 6))
 
@@ -322,6 +334,20 @@ class JanelaXP(ctk.CTkToplevel):
             self.ao_fechar()
         else:
             self.destroy()
+
+    def _zoom(self, passo: float):
+        """Encolhe ou aumenta a janela inteira, e guarda a escolha."""
+        nova = round(min(1.4, max(0.5, self.escala_ui + passo)), 2)
+        if nova == self.escala_ui:
+            return
+        self.escala_ui = nova
+        ctk.set_widget_scaling(nova)
+        self.grafico.configure(width=int(340 * nova), height=int(155 * nova))
+        # deixa a janela reencolher: so crescer travaria no tamanho antigo
+        self._largura = self._altura = 1
+        self._ajustar()
+        if self.ao_zoom:
+            self.ao_zoom(nova)
 
     def _corrigir(self, qual: str):
         if self.ao_corrigir_nivel:
