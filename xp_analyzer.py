@@ -312,9 +312,8 @@ class XPAnalyzer(ctk.CTk):
                 elif tipo == "erro":
                     self.janela.avisar(
                         "looking for the XP bars",
-                        "keep playing and gaining XP for a few seconds —
-"
-                        "that's how they're identified")
+                        "keep playing and gaining XP for a few "
+                        "seconds so they can be identified")
                 elif tipo == "deteccao":
                     self.janela.detalhe.configure(text=dados)
                 elif tipo == "fonte":
