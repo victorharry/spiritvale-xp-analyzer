@@ -56,10 +56,12 @@ class XPAnalyzer(ctk.CTk):
             janela_minutos=float(self.cfg.get("xp_janela_minutos", 15)))
 
         self.pausado = False
+        self.leitor = None
         self.deslocamento = 0.0     # segundos pausados, descontados do relogio
         self._pausa_em = 0.0
         self.janela = JanelaXP(self, ao_fechar=self.encerrar,
-                               ao_zerar=self.zerar, ao_pausar=self.pausar)
+                               ao_zerar=self.zerar, ao_pausar=self.pausar,
+                               ao_corrigir_nivel=self.corrigir_nivel)
         pos = self.cfg.get("xp_overlay_pos") or []
         self.janela.posicionar(*(int(p) for p in pos)) if len(pos) == 2 \
             else self.janela.posicionar(60, 60)
@@ -123,6 +125,21 @@ class XPAnalyzer(ctk.CTk):
 
     # -- ciclo ------------------------------------------------------------
 
+    def corrigir_nivel(self, qual: str):
+        """Clicou no numero do nivel: deixa acertar sem editar o config."""
+        chave = "xp_nivel_base" if qual == "base" else "xp_nivel_job"
+        rotulo = "CLASS" if qual == "base" else "JOB"
+        novo = simpledialog.askinteger(
+            "XP Analyzer", f"{rotulo} level:", minvalue=1, maxvalue=999,
+            initialvalue=self.cfg.get(chave) or 1)
+        if not novo:
+            return
+        self.cfg[chave] = novo
+        comum.salvar_config(self.cfg)
+        if self.leitor is not None:
+            self.leitor.definir_niveis(self.cfg.get("xp_nivel_base") or 1,
+                                       self.cfg.get("xp_nivel_job") or 1)
+
     def pausar(self, pausado: bool):
         """Congela a contagem sem parar de ler.
 
@@ -168,6 +185,7 @@ class XPAnalyzer(ctk.CTk):
                 if ate_retentar <= 0:
                     leitor = self._ligar_memoria()
                     ate_retentar = int(self.cfg.get("xp_retentar_memoria", 30))
+            self.leitor = leitor
             if leitor is not None:
                 leitura = leitor.ler()
                 if leitura is None:

@@ -32,11 +32,13 @@ class JanelaXP(ctk.CTkToplevel):
     ofertas ou a propria barra de XP, atrapalha o OCR do resto do programa.
     """
 
-    def __init__(self, pai, ao_fechar=None, ao_zerar=None, ao_pausar=None):
+    def __init__(self, pai, ao_fechar=None, ao_zerar=None, ao_pausar=None,
+                 ao_corrigir_nivel=None):
         super().__init__(pai, fg_color=CARTAO)
         self.ao_fechar = ao_fechar
         self.ao_zerar = ao_zerar
         self.ao_pausar = ao_pausar
+        self.ao_corrigir_nivel = ao_corrigir_nivel
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.attributes("-alpha", 0.92)
@@ -68,7 +70,7 @@ class JanelaXP(ctk.CTkToplevel):
         self.blocos = {}
         for qual, rotulo, cor in (("base", "CLASS XP", VERDE),
                                   ("job", "JOB XP", ACENTO)):
-            self.blocos[qual] = self._bloco(corpo, rotulo, cor)
+            self.blocos[qual] = self._bloco(corpo, rotulo, cor, qual)
 
         # grafico com as duas curvas, nas mesmas cores dos blocos
         self.grafico = tk.Canvas(corpo, width=340, height=155, bg=CARTAO2,
@@ -98,7 +100,7 @@ class JanelaXP(ctk.CTkToplevel):
         self._altura = int(self.winfo_reqheight() / escala)
         self.geometry(f"{self._largura}x{self._altura}")
 
-    def _bloco(self, pai, rotulo: str, cor: str) -> dict:
+    def _bloco(self, pai, rotulo: str, cor: str, qual: str) -> dict:
         quadro = ctk.CTkFrame(pai, fg_color=CARTAO2, corner_radius=10)
         quadro.pack(fill="x", padx=16, pady=(0, 8))
 
@@ -109,6 +111,11 @@ class JanelaXP(ctk.CTkToplevel):
         nivel = ctk.CTkLabel(linha, text="", font=(FONTE, 12),
                              text_color=TEXTO_SUB)
         nivel.pack(side="right")
+        # O numero do nivel nao esta na barra (ela guarda so o preenchimento),
+        # entao vem do que voce informou. Clicar nele permite corrigir sem ter
+        # que abrir o config na mao.
+        nivel.configure(cursor="hand2")
+        nivel.bind("<Button-1>", lambda _e, q=qual: self._corrigir(q))
 
         eta = ctk.CTkLabel(quadro, text="—", font=(FONTE, 30, "bold"),
                            text_color=cor)
@@ -116,7 +123,7 @@ class JanelaXP(ctk.CTkToplevel):
         rodape = ctk.CTkLabel(quadro, text="measuring...", font=(FONTE, 12),
                               text_color=TEXTO_SUB)
         rodape.pack(padx=14, pady=(0, 11), anchor="w")
-        for alvo in (quadro, linha, nivel, eta, rodape):
+        for alvo in (quadro, linha, eta, rodape):
             alvo.bind("<Button-1>", self._pegar)
             alvo.bind("<B1-Motion>", self._arrastar)
         return {"nivel": nivel, "eta": eta, "rodape": rodape, "cor": cor}
@@ -293,6 +300,10 @@ class JanelaXP(ctk.CTkToplevel):
             self.ao_fechar()
         else:
             self.destroy()
+
+    def _corrigir(self, qual: str):
+        if self.ao_corrigir_nivel:
+            self.ao_corrigir_nivel(qual)
 
     def _alternar_pausa(self):
         """Pausa a contagem — util quando voce vai pra cidade.
