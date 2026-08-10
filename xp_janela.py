@@ -158,6 +158,27 @@ class JanelaXP(ctk.CTkToplevel):
             text=f"{pct:.1f}% done  ·  to {nivel + 1}  ·  {ritmo}")
 
 
+    def _ajustar(self) -> None:
+        """Cresce a janela se o conteudo passou a nao caber.
+
+        A largura era fixada na abertura, com os rotulos ainda vazios. Quando o
+        texto cresce ("63.7% done · to 113 · 1.13 levels/h") ele estourava e era
+        cortado dos DOIS lados. So cresce, nunca encolhe: encolher faria a
+        janela tremer a cada atualizacao.
+        """
+        self.update_idletasks()
+        try:
+            escala = ctk.ScalingTracker.get_window_scaling(self)
+        except Exception:
+            escala = 1.0
+        larg = int(self.winfo_reqwidth() / escala)
+        alt = int(self.winfo_reqheight() / escala)
+        if larg > self._largura or alt > self._altura:
+            self._largura = max(larg, self._largura)
+            self._altura = max(alt, self._altura)
+            self.geometry(f"{self._largura}x{self._altura}"
+                          f"+{self.winfo_x()}+{self.winfo_y()}")
+
     def posicionar(self, x: int, y: int) -> None:
         """Move sem perder o tamanho (geometry so com '+x+y' zera o resto)."""
         self.geometry(f"{self._largura}x{self._altura}+{x}+{y}")
@@ -287,6 +308,7 @@ class JanelaXP(ctk.CTkToplevel):
         g.create_text(x1 - 3, y0 - 2, anchor="se",
                       text=motor_xp.formatar_tempo(duracao), fill=TEXTO_SUB,
                       font=(FONTE, 9))
+        self._ajustar()
 
     def _pegar(self, evento):
         self._dx = evento.x_root - self.winfo_x()
