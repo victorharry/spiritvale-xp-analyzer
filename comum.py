@@ -15,7 +15,15 @@ import os
 import sys
 from pathlib import Path
 
-RAIZ = Path(__file__).resolve().parent
+# Empacotado (.exe), __file__ aponta pra uma pasta temporaria que some ao
+# fechar. Sem este desvio, tudo o que o app aprendeu — os niveis medidos, a
+# posicao da janela — seria perdido a cada uso, e o usuario nunca entenderia
+# por que ele "esquece" tudo.
+if getattr(sys, "frozen", False):
+    RAIZ = Path(os.environ.get("APPDATA") or Path.home()) / "XP Analyzer"
+    RAIZ.mkdir(parents=True, exist_ok=True)
+else:
+    RAIZ = Path(__file__).resolve().parent
 CAMINHO_CONFIG = RAIZ / "config.json"
 
 CONFIG_PADRAO = {
