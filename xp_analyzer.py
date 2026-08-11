@@ -71,10 +71,16 @@ class XPAnalyzer(ctk.CTk):
 
         self.pausado = False
         self.TETO = {"base": 150, "job": 70}   # os maximos do jogo
-        # (k, expoente) de req(n) = k * n^expoente, ajustado sobre os niveis
-        # que o proprio app mediu nos level ups. Ver NOTAS-XP.md — e uma
-        # PREVISAO, boa na faixa medida e nao verificada longe dela
-        self.CURVA = {"base": (1.6467, 3.512), "job": (2.9824, 3.318)}
+        # req(n) = k * n^expoente. UMA curva so: classe e job medidos no mesmo
+        # nivel batem em 0,08% (ver NOTAS-XP.md), entao sao a mesma funcao.
+        # Ajustada sobre os niveis 16-28, onde erra no maximo 0,65%.
+        #
+        # FORA dessa faixa e chute. No nivel 114 tres formas que cabem nos dados
+        # medidos com <0,7% divergem por 2x entre si — ajuste local nao licencia
+        # extrapolacao. Por isso a previsao vem sempre marcada como estimativa
+        # e qualquer medicao a substitui.
+        self.CURVA = {"base": (3.6993, 3.2434), "job": (3.6993, 3.2434)}
+        self.FAIXA_AJUSTADA = (16, 28)
         # quanto XP cada nivel pede — aprendido, nao chutado (ver _aprender_no_level_up)
         self.necessario: dict[str, int] = dict(self.cfg.get("xp_necessario") or {})
         self._nivel_anterior: dict[str, int] = {}

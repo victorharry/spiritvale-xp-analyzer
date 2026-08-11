@@ -33,7 +33,7 @@ def conferir(rotulo, obtido, esperado):
 class Fingido:
     """So o suficiente pros metodos rodarem, sem Tk e sem rede."""
     TETO = {"base": 150, "job": 70}
-    CURVA = {"base": (1.6467, 3.512), "job": (2.9824, 3.318)}
+    CURVA = {"base": (3.6993, 3.2434), "job": (3.6993, 3.2434)}
     _previsto = xp_analyzer.XPAnalyzer._previsto
     _aprender_no_level_up = xp_analyzer.XPAnalyzer._aprender_no_level_up
     _leitura_da_rede = xp_analyzer.XPAnalyzer._leitura_da_rede
@@ -55,9 +55,9 @@ app = Fingido()
 print("sem nada medido, a formula entra — mas se declara estimativa:")
 sem_medida = app._leitura_da_rede(Progresso("Corujo", 5, 900, 70, 0))
 conferir("marcada como estimada", sem_medida["estimado"], True)
-conferir("formula do nivel 5", app._previsto("base", 5), 469)
-# 469 no nivel 5 contra 1.568 medido: a formula foi ajustada nos niveis
-# 17-21 e NAO vale la embaixo. Ela existe pra ser conferida no nivel alto,
+conferir("formula do nivel 5", app._previsto("base", 5), 684)
+# 684 no nivel 5 contra 1.568 medido: a formula foi ajustada nos niveis
+# 16-28 e NAO vale la embaixo. Ela existe pra ser conferida no nivel alto,
 # e por isso medida sempre vence estimativa.
 
 print("\nsubindo de nivel, o nivel anterior fica conhecido:")

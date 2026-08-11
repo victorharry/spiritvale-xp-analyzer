@@ -150,3 +150,50 @@ Resíduo baixo localmente não garante distância. O teste barato: comparar a
 porcentagem que o jogo mostra para o Galinho com `xp ÷ 27.513.745`. Se bater,
 a fórmula está validada no topo e o `necessario` pode ser previsto em vez de
 esperado. **Não embutir a fórmula antes disso.**
+
+## Os registros manuais refutaram a fórmula — e mostraram por quê
+
+20 amostras registradas pelo painel de calibração (Corujo, níveis 16–28).
+
+**Reprodutibilidade excelente.** O mesmo nível medido duas ou três vezes bate
+em 0,06%: `base 21` deu 72.102 e 72.062; `job 16` deu 29.674, 29.689, 29.687.
+A regra de três é um instrumento preciso.
+
+**Classe e job são a MESMA curva.** Corrige a conclusão anterior deste arquivo,
+que dizia o contrário — aquilo era artefato do ajuste, não do dado:
+
+| nível | classe | job | diferença |
+|---|---|---|---|
+| 21 | 72.082 | 72.023 | +0,08% |
+| 22 | 83.822 | 84.141 | −0,38% |
+
+**A fórmula embutida foi falsificada pela deriva.** A coluna de erro cresceu
+monotonicamente com o nível: +0,5 · +0,6 · +1,8 · +2,9 · +4,4 · +5,6 · +6,9 ·
++9,5 · +9,8. Isso não é ruído, é a forma errada.
+
+### A lição que importa
+
+Três formas ajustadas nos mesmos 12 pontos medidos:
+
+| forma | erro na faixa medida | previsão pro 114 |
+|---|---|---|
+| potência `3,6993 × n^3,2434` | 0,65% | 17,4 M — refutado |
+| polinômio grau 3 | 0,14% | 12,5 M — refutado |
+| polinômio grau 4 | 0,12% | 23,1 M |
+
+Todas cabem nos dados com menos de 0,7% e **discordam por 2× no nível 114**.
+Refutado = abaixo dos 18.720.722 XP já observados dentro daquele nível.
+
+Ajuste local não licencia extrapolação. Medir perto do 114 continua sendo a
+única forma de saber o 114 — uma única amostra do Galinho decide mais que
+cinquenta do Corujo.
+
+### Curva medida (níveis 16–28)
+
+```
+16   29.683      21   72.052      26  143.541
+17   36.149      22   83.982      28  181.560
+18   43.525      23   96.918
+19   51.927      24  110.962
+20   61.463      25  126.584
+```
