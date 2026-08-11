@@ -81,7 +81,8 @@ class XPAnalyzer(ctk.CTk):
         self._pico: dict[str, int] = {}
         self.deslocamento = 0.0     # segundos pausados, descontados do relogio
         self._pausa_em = 0.0
-        self.janela = JanelaXP(self, ao_fechar=self.encerrar,
+        self.janela = JanelaXP(self, ao_registrar=self.registrar_amostra,
+                               ao_fechar=self.encerrar,
                                ao_zerar=self.zerar, ao_pausar=self.pausar,
                                ao_corrigir_nivel=self.corrigir_nivel,
                                ao_zoom=self.guardar_zoom,
@@ -146,6 +147,43 @@ class XPAnalyzer(ctk.CTk):
         comum.salvar_config(self.cfg)
         return (f"Level {nivel} needs about {self.necessario[chave]:,} XP.\n"
                 f"({xp:,} XP was {pct}% of it)")
+
+    def registrar_amostra(self, valores: dict) -> str:
+        """Painel temporario de calibracao: guarda (nivel, XP, %) e recalcula.
+
+        Grava a amostra CRUA num arquivo, nao so o `necessario` derivado. O
+        derivado ja e uma conclusao; se depois a gente quiser reajustar a curva
+        com outro criterio, precisa dos ingredientes, nao do bolo pronto.
+
+        O XP e lido AGORA, no clique — a porcentagem que voce acabou de digitar
+        vale pro XP deste instante.
+        """
+        pacote = self.monitor.ultimo
+        if pacote is None:
+            return "no reading from the game yet"
+
+        linhas, resumo = [], []
+        for qual, pct in valores.items():
+            nivel = pacote.nivel if qual == "base" else pacote.nivel_job
+            xp = pacote.xp if qual == "base" else pacote.xp_job
+            if nivel >= self.TETO.get(qual, 10**9) or xp <= 0 or not 0 < pct <= 100:
+                continue
+            necessario = int(round(xp / (pct / 100.0)))
+            previsto = self._previsto(qual, nivel)
+            erro = 100.0 * (previsto - necessario) / necessario if previsto else 0.0
+            linhas.append(f"{qual}\t{nivel}\t{xp}\t{pct}\t{necessario}\t"
+                          f"{previsto}\t{erro:+.1f}")
+            self.necessario[f"{qual}:{nivel}"] = necessario
+            resumo.append(f"{qual} {nivel}: {necessario:,} ({erro:+.1f}% vs formula)")
+
+        if not linhas:
+            return "nothing to record (max level, or no XP yet)"
+        with open(comum.RAIZ / "amostras-xp.tsv", "a", encoding="utf-8") as arq:
+            for linha in linhas:
+                arq.write(linha + "\n")
+        self.cfg["xp_necessario"] = self.necessario
+        comum.salvar_config(self.cfg)
+        return " · ".join(resumo)
 
     def corrigir_nivel(self, qual: str):
         """Clicou no numero do nivel: pergunta a PORCENTAGEM, nao o nivel.

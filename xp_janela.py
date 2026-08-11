@@ -32,11 +32,12 @@ class JanelaXP(ctk.CTkToplevel):
     ofertas ou a propria barra de XP, atrapalha o OCR do resto do programa.
     """
 
-    def __init__(self, pai, ao_fechar=None, ao_zerar=None, ao_pausar=None,
+    def __init__(self, pai, ao_registrar=None, ao_fechar=None, ao_zerar=None, ao_pausar=None,
                  ao_corrigir_nivel=None, ao_zoom=None, escala=1.0):
         super().__init__(pai, fg_color=CARTAO)
         self.ao_fechar = ao_fechar
         self.ao_zerar = ao_zerar
+        self.ao_registrar = ao_registrar
         self.ao_pausar = ao_pausar
         self.ao_corrigir_nivel = ao_corrigir_nivel
         self.ao_zoom = ao_zoom
@@ -88,6 +89,28 @@ class JanelaXP(ctk.CTkToplevel):
                                  height=int(155 * self.escala_ui), bg=CARTAO2,
                                  highlightthickness=0, bd=0)
         self.grafico.pack(padx=16, pady=(4, 6))
+
+        # -- painel TEMPORARIO de calibracao --------------------------------
+        # Existe so pra juntar pontos (nivel, XP, %) e fechar a formula da
+        # curva de XP. Sai quando os valores estiverem confirmados.
+        painel = ctk.CTkFrame(corpo, fg_color="transparent")
+        painel.pack(padx=16, pady=(0, 4), fill="x")
+        self.entradas = {}
+        for qual, rotulo in (("base", "class %"), ("job", "job %")):
+            linha = ctk.CTkFrame(painel, fg_color="transparent")
+            linha.pack(fill="x", pady=1)
+            ctk.CTkLabel(linha, text=rotulo, font=(FONTE, 11),
+                         text_color=TEXTO_SUB, width=int(52 * self.escala_ui),
+                         anchor="w").pack(side="left")
+            campo = ctk.CTkEntry(linha, width=int(80 * self.escala_ui),
+                                 height=int(22 * self.escala_ui),
+                                 font=(FONTE, 12), placeholder_text="42.0")
+            campo.pack(side="left")
+            self.entradas[qual] = campo
+        self.botao_registrar = ctk.CTkButton(
+            painel, text="register", height=int(24 * self.escala_ui),
+            font=(FONTE, 12), command=self._registrar)
+        self.botao_registrar.pack(fill="x", pady=(4, 0))
 
         self.detalhe = ctk.CTkLabel(corpo, text="", font=(FONTE, 12),
                                     text_color=TEXTO_SUB, justify="left")
@@ -142,6 +165,33 @@ class JanelaXP(ctk.CTkToplevel):
 
     # nivel maximo de cada barra: chegando ali, nao ha proximo nivel pra estimar
     TETO = {"base": 150, "job": 70}
+
+    def _registrar(self) -> None:
+        """Manda as duas porcentagens digitadas pro app, e limpa os campos.
+
+        Le os DOIS campos antes de chamar: as duas porcentagens sao lidas da
+        mesma tela, no mesmo instante, e tem que casar com o mesmo XP.
+        """
+        if not self.ao_registrar:
+            return
+        valores = {}
+        for qual, campo in self.entradas.items():
+            texto = campo.get().strip().replace("%", "").replace(",", ".")
+            if not texto:
+                continue
+            try:
+                valores[qual] = float(texto)
+            except ValueError:
+                self.detalhe.configure(text=f"'{texto}' is not a number")
+                return
+        if not valores:
+            self.detalhe.configure(text="type at least one %")
+            return
+        aviso = self.ao_registrar(valores)
+        for campo in self.entradas.values():
+            campo.delete(0, "end")
+        if aviso:
+            self.detalhe.configure(text=aviso)
 
     def atualizar_bloco(self, qual: str, nivel: int, pct: float | None,
                         eta: float | None, taxa: float | None) -> None:
