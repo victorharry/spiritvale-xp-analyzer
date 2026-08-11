@@ -1,22 +1,21 @@
 """Quanto XP cada nivel pede — a tabela do jogo, nao uma estimativa.
 
-Extraida de `SpiritVale_Data/sharedassets0.assets`. A tabela ESTA no cliente
-porque tem que estar: o servidor manda XP absoluto, e quem desenha a barra em
-porcentagem e o cliente, entao ele precisa do denominador.
+GERADO por extrair_tabela.py. Nao edite a mao; rode o extrator de novo.
 
-Achar valor solto no arquivo nao provava nada — a faixa medida do nivel 114 tem
-100 mil de largura, e dado binario aleatorio caia nela 177 mil vezes. O que
-identificou a tabela foi a ESTRUTURA: num array indexado por nivel, o 22 fica
-um elemento depois do 21, o 25 tres depois do 22, o 33 oito depois do 25.
-Exigindo os acertos nas distancias certas, sobrou exatamente um candidato, com
-6 de 6 niveis batendo.
+Origem: SpiritVale_Data\sharedassets0.assets, offset 307425288.
 
-Confere com as 18 medicoes independentes que o Victor registrou: todas caem
-dentro. E uma tabela so serve para classe e job — o que explica os dois terem
-batido em 0,08% quando medidos no mesmo nivel.
+A tabela esta no cliente porque tem que estar: o servidor manda XP absoluto, e
+quem desenha a barra em porcentagem e o cliente — entao ele precisa do
+denominador.
 
-O jogo satura em 2^31 a partir do nivel 162; aqui vai ate 161, e o maximo
-jogavel e 150.
+Nao ha formula por tras destes numeros. Isso foi testado a serio: 294 milhoes
+de formas contra as medicoes, e nem restringindo a faixa lisa (niveis 15-130)
+com os valores exatos algo desce de 1,2% de erro. Sao 161 numeros
+escritos a mao, como em Ragnarok, onde o EXP por nivel tambem e arquivo de
+dados.
+
+Uma tabela so serve classe e job — o que explica os dois baterem em 0,08%
+quando medidos no mesmo nivel.
 """
 
 from __future__ import annotations

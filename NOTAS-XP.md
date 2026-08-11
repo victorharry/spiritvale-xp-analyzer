@@ -346,3 +346,48 @@ falharam porque não havia o que achar.
 Os dois métodos de medição continuam no código de propósito: foram eles que
 produziram a evidência que confere a tabela, e são eles que sobram se um patch
 mudar o arquivo.
+
+## Como funciona a progressão de nível — a resposta final
+
+**Não há fórmula.** São 161 números escritos à mão numa tabela, e o jogo lê
+essa tabela. Isso não é suposição: com os valores exatos em mãos, nem o trecho
+mais liso da curva (níveis 15–130) desce de 1,2% de erro contra qualquer ajuste
+testado.
+
+### O formato da curva
+
+A razão entre níveis consecutivos desenha um **U**:
+
+| faixa | quanto cada nível custa a mais que o anterior |
+|---|---|
+| 1 → 2 | 4,90× |
+| 10 → 11 | 1,254× |
+| 20 → 21 | 1,173× |
+| 50 → 51 | 1,070× |
+| 100 → 101 | 1,050× |
+| **131 → 132** | **1,047× (o mínimo)** |
+| 140 → 141 | 1,070× |
+| 150 → 151 | 1,158× |
+
+Ou seja: cai rápido no começo, encosta em ~4,7% por nível lá pelo 130, e depois
+**volta a subir** — uma parede de endgame deliberada. É por isso que nenhuma
+lei de potência serve: o expoente local vai de n^2,3 no nível 5 a n^23,5 no 158.
+
+### Uma tabela só para classe e job
+
+Confirmado por medição: no nível 21, classe deu 72.082 e job deu 72.023 (0,08%
+de diferença). Os dois leem o mesmo array.
+
+### O que o servidor manda e o que o cliente faz
+
+O servidor manda `experience` — XP **dentro do nível atual**, que zera a cada
+subida. O cliente divide pela tabela para desenhar a barra em porcentagem. Era
+por isso que a tabela tinha que estar no cliente, e foi esse raciocínio que
+levou a procurá-la ali.
+
+### Estado do XP Analyzer
+
+100% exato nos 150 níveis jogáveis. Sem digitar nada, sem calibrar, sem
+estimar. O painel de calibração saiu; o aprendizado por level up ficou como
+vigia — se um patch mexer na tabela, a medição diverge e o app avisa para rodar
+`extrair_tabela.py`.

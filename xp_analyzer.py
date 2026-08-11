@@ -9,13 +9,15 @@ Nao ha janela principal: a propria sobreposicao E o programa.
 
 **Nada e lido da memoria do jogo.** Os numeros vem dos pacotes que o servidor
 ja manda pra sua maquina (ver captura.py), que trazem nivel e XP absoluto
-prontos. Nao ha o que digitar e nao ha o que adivinhar.
+prontos.
 
-O que o servidor NAO manda e quanto XP o nivel pede. Isso e aprendido quando
-voce sobe de nivel: o maior XP visto antes da virada e o que aquele nivel
-pedia, com erro de uma morte de mob (0,25% no nivel 114 — ver NOTAS-XP.md).
-Ate o primeiro level up nao ha porcentagem nem estimativa de tempo, so nivel,
-XP e ritmo. Ficar sem estimativa e melhor que exibir uma inventada.
+O que o servidor NAO manda e quanto XP o nivel pede — isso vem de tabela_xp.py,
+extraida dos arquivos do proprio jogo. Entao nao ha nada a digitar, nada a
+calibrar e nada a estimar: os 150 niveis sao exatos.
+
+O aprendizado por level up continua no codigo, mas mudou de papel: em vez de
+alimentar o config, ele VIGIA. Se um patch mexer na tabela, a medicao vai
+divergir e o app avisa pra rodar extrair_tabela.py de novo.
 """
 
 from __future__ import annotations
@@ -69,11 +71,8 @@ class XPAnalyzer(ctk.CTk):
 
         self.pausado = False
         self.TETO = {"base": 150, "job": 70}   # os maximos do jogo
-        # Nao ha curva embutida. A estimativa vem de INTERPOLAR entre as
-        # medicoes do proprio usuario (ver _previsto): polinomio, lei de
-        # potencia, potencia vezes exponencial e potencia por faixas foram
-        # todos testados e nenhum chega na precisao das medicoes.
-        # quanto XP cada nivel pede — aprendido, nao chutado (ver _aprender_no_level_up)
+        # medicoes antigas do usuario, de antes da tabela existir. Ficam como
+        # reserva pra um nivel que a tabela nao cubra (ver _previsto)
         self.necessario: dict[str, int] = dict(self.cfg.get("xp_necessario") or {})
         # todas as estimativas ja registradas de cada nivel, pra mediana
         self._historico: dict[str, list[int]] = {
@@ -82,8 +81,7 @@ class XPAnalyzer(ctk.CTk):
         self._pico: dict[str, int] = {}
         self.deslocamento = 0.0     # segundos pausados, descontados do relogio
         self._pausa_em = 0.0
-        self.janela = JanelaXP(self, ao_registrar=self.registrar_amostra,
-                               ao_fechar=self.encerrar,
+        self.janela = JanelaXP(self, ao_fechar=self.encerrar,
                                ao_zerar=self.zerar, ao_pausar=self.pausar,
                                ao_corrigir_nivel=self.corrigir_nivel,
                                ao_zoom=self.guardar_zoom,
@@ -123,112 +121,31 @@ class XPAnalyzer(ctk.CTk):
         self.cfg["xp_escala"] = escala
         comum.salvar_config(self.cfg)
 
-    def informar_porcentagem(self, qual: str, pct: float, pacote) -> str | None:
-        """A conta: XP exato do servidor + porcentagem lida por voce.
+    def corrigir_nivel(self, qual: str):
+        """Clicar no nivel mostra de onde vem o numero daquele bloco.
 
-        Devolve o texto do aviso, ou None se nao deu pra calcular.
-
-        O `pacote` vem de fora de proposito. A porcentagem que voce le na tela
-        vale para o XP daquele instante; se eu buscasse o XP depois da digitacao
-        estaria dividindo XP novo por porcentagem velha, e superestimando o
-        tamanho do nivel — foi exatamente assim que a medicao do job saiu 10%
-        alta no teste (ver NOTAS-XP.md).
+        Nao ha mais o que corrigir: o nivel vem do servidor e o tamanho dele
+        vem da tabela do jogo. Virou uma janelinha de procedencia — util quando
+        o valor parecer errado, porque diz na hora se a fonte e a tabela ou uma
+        medicao antiga sobrando no config.
         """
+        pacote = self.monitor.ultimo
+        if pacote is None:
+            messagebox.showinfo("XP Analyzer", "No reading from the game yet.")
+            return
         nivel = pacote.nivel if qual == "base" else pacote.nivel_job
         xp = pacote.xp if qual == "base" else pacote.xp_job
-        if nivel >= self.TETO.get(qual, 10**9):
-            return "That's already the max level — nothing to estimate."
-        if xp <= 0:
-            return "No XP in this level yet. Gain a little first."
-        if not 0 < pct <= 100:
-            return None
-        chave = f"{qual}:{nivel}"
-        self.necessario[chave] = int(round(xp / (pct / 100.0)))
-        self.cfg["xp_necessario"] = self.necessario
-        comum.salvar_config(self.cfg)
-        return (f"Level {nivel} needs about {self.necessario[chave]:,} XP.\n"
-                f"({xp:,} XP was {pct}% of it)")
-
-    def registrar_amostra(self, valores: dict) -> str:
-        """Painel temporario de calibracao: guarda (nivel, XP, %) e recalcula.
-
-        Grava a amostra CRUA num arquivo, nao so o `necessario` derivado. O
-        derivado ja e uma conclusao; se depois a gente quiser reajustar a curva
-        com outro criterio, precisa dos ingredientes, nao do bolo pronto.
-
-        O XP e lido AGORA, no clique — a porcentagem que voce acabou de digitar
-        vale pro XP deste instante.
-        """
-        pacote = self.monitor.ultimo
-        if pacote is None:
-            return "no reading from the game yet"
-
-        linhas, resumo = [], []
-        for qual, pct in valores.items():
-            nivel = pacote.nivel if qual == "base" else pacote.nivel_job
-            xp = pacote.xp if qual == "base" else pacote.xp_job
-            if nivel >= self.TETO.get(qual, 10**9) or xp <= 0 or not 0 < pct <= 100:
-                continue
-            estimativa = int(round(xp / (pct / 100.0)))
-            previsto = self._previsto(qual, nivel)
-            erro = 100.0 * (previsto - estimativa) / estimativa if previsto else 0.0
-            linhas.append(f"{qual}\t{nivel}\t{xp}\t{pct}\t{estimativa}\t"
-                          f"{previsto}\t{erro:+.1f}")
-
-            # Guarda TODAS as estimativas do nivel e fica com a mediana, em vez
-            # de o ultimo registro virar a verdade. Duas fontes de erro pedem
-            # isso: a barra arredonda na primeira decimal, e entre voce ler a
-            # porcentagem e clicar o XP ja subiu um pouco (pior ainda em grupo).
-            # Uma amostra do nivel 115 saiu 9% acima das outras dez — sozinha,
-            # ela substituiria as boas.
-            chave = f"{qual}:{nivel}"
-            historico = self._historico.setdefault(chave, [])
-            historico.append(estimativa)
-            del historico[:-25]
-            necessario = sorted(historico)[len(historico) // 2]
-            self.necessario[chave] = necessario
-            self.cfg["xp_amostras"] = self._historico
-            resumo.append(f"{qual} {nivel}: {necessario:,} "
-                          f"({len(historico)} amostra(s), {erro:+.1f}% vs previsto)")
-
-        if not linhas:
-            return "nothing to record (max level, or no XP yet)"
-        with open(comum.RAIZ / "amostras-xp.tsv", "a", encoding="utf-8") as arq:
-            for linha in linhas:
-                arq.write(linha + "\n")
-        self.cfg["xp_necessario"] = self.necessario
-        comum.salvar_config(self.cfg)
-        return " · ".join(resumo)
-
-    def corrigir_nivel(self, qual: str):
-        """Clicou no numero do nivel: pergunta a PORCENTAGEM, nao o nivel.
-
-        O nivel nao se pergunta mais — vem do servidor. O que falta e o tamanho
-        do nivel, e ate subir de nivel a unica fonte disso e voce olhando a
-        barra do jogo. Ler da sua tela e digitar nao e ler memoria: e voce
-        contando o que ve.
-        """
-        pacote = self.monitor.ultimo
-        if pacote is None:
-            messagebox.showinfo(
-                "XP Analyzer",
-                "No reading from the game yet.\n\n"
-                "The server only sends your progress when it changes — "
-                "gain a little XP and try again.")
-            return
+        oficial = tabela_xp.xp_do_nivel(nivel)
+        medido = self.necessario.get(f"{qual}:{nivel}")
+        fonte = ("game table" if oficial else
+                 "your own measurement" if medido else "unknown")
+        total = oficial or medido
+        detalhe = (f"{xp:,} of {total:,} XP ({100.0 * xp / total:.2f}%)"
+                   if total else "level size unknown")
         rotulo = "CLASS" if qual == "base" else "JOB"
-        nivel = pacote.nivel if qual == "base" else pacote.nivel_job
-        pct = simpledialog.askfloat(
+        messagebox.showinfo(
             "XP Analyzer",
-            f"{rotulo} level {nivel}: what % does the game show?\n\n"
-            f"Read it now — the number is matched against the XP as it is "
-            f"at this moment.",
-            minvalue=0.1, maxvalue=100.0)
-        if not pct:
-            return
-        aviso = self.informar_porcentagem(qual, pct, pacote)
-        if aviso:
-            messagebox.showinfo("XP Analyzer", aviso)
+            f"{rotulo} level {nivel}\n\n{detalhe}\n\nsource: {fonte}")
 
     def pausar(self, pausado: bool):
         """Congela a contagem sem parar de ler.
@@ -324,12 +241,20 @@ class XPAnalyzer(ctk.CTk):
             anterior = self._nivel_anterior.get(qual)
             pico = self._pico.get(qual, 0)
             if anterior is not None and nivel > anterior and pico > 0:
-                chave = f"{qual}:{anterior}"
-                self.necessario[chave] = pico
-                self.cfg["xp_necessario"] = self.necessario
-                comum.salvar_config(self.cfg)
-                self.fila.put(("fonte", f"level size from level up: "
-                                        f"{chave} = {pico:,} XP"))
+                # A tabela do jogo ja da o valor, entao a medicao nao entra
+                # mais como fonte: entra como VIGIA. O pico visto antes da
+                # virada nunca passa do que o nivel pedia, e chega perto — se
+                # ele passar da tabela, ou ficar muito abaixo, e sinal de que
+                # um patch mexeu nos numeros e o extrator precisa rodar.
+                esperado = tabela_xp.xp_do_nivel(anterior)
+                if esperado and not esperado * 0.90 <= pico <= esperado * 1.01:
+                    self.fila.put(("fonte", f"WARNING: level {anterior} measured "
+                                            f"{pico:,} XP but the table says "
+                                            f"{esperado:,} — run extrair_tabela.py"))
+                if not esperado:
+                    self.necessario[f"{qual}:{anterior}"] = pico
+                    self.cfg["xp_necessario"] = self.necessario
+                    comum.salvar_config(self.cfg)
             if nivel != anterior:
                 self._pico[qual] = 0
             self._nivel_anterior[qual] = nivel
