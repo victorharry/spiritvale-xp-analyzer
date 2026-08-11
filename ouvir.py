@@ -55,8 +55,9 @@ def main() -> int:
 
     if monitor.ultimo is None:
         print("\n  Nenhum personagem lido.")
-        print("  - o Npcap precisa estar instalado (https://npcap.com), com")
-        print("    'WinPcap API-compatible Mode' marcado na instalacao")
+        print("  - o Npcap precisa estar instalado (https://npcap.com/#download),")
+        print("    com 'WinPcap API-compatible Mode' MARCADO e 'Restrict Npcap")
+        print("    driver's access to Administrators only' DESMARCADO")
         print("  - o jogo precisa estar aberto e conectado a um servidor")
         print(f"  - pacotes do jogo vistos ate agora: {monitor.pacotes}")
         return 1

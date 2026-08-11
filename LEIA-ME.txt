@@ -12,9 +12,15 @@ Com o Npcap instalado, o XP Analyzer le o nivel e o XP direto dos pacotes que o
 servidor do jogo ja manda pro seu computador. E o valor exato, e voce nao
 precisa digitar nada.
 
-    1. baixe em  https://npcap.com
-    2. na instalacao, MARQUE "Install Npcap in WinPcap API-compatible Mode"
+    1. baixe em  https://npcap.com/#download
+    2. na instalacao:
+         MARQUE     "Install Npcap in WinPcap API-compatible Mode"
+         DESMARQUE  "Restrict Npcap driver's access to Administrators only"
+                    (marcada, ela obriga a abrir tudo como administrador)
     3. abra o XP Analyzer
+
+E o mesmo Npcap que o Spirit Vale Overlay pede, com as mesmas opcoes. Se voce
+ja usa aquele, nao precisa instalar de novo.
 
 Sem o Npcap o programa continua funcionando: ele le a barra de XP da memoria do
 jogo e pergunta seu nivel uma vez, no primeiro uso.
