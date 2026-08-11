@@ -197,3 +197,49 @@ cinquenta do Corujo.
 19   51.927      24  110.962
 20   61.463      25  126.584
 ```
+
+## A curva, com âncora no topo
+
+O registro do Galinho nos níveis 114 e 115 fechou a forma — e matou todas as
+tentativas anteriores de uma vez.
+
+```
+114:  39.268.086 / 39.254.026 / 39.293.970 / 39.304.706   (0,13% de dispersão)
+115:  40.738.878 / 41.073.000 / 41.029.803 / 41.313.726
+```
+
+A previsão em vigor era 17,36 M contra 39,28 M reais: **errou 2,3×**. O
+polinômio grau 4, único sobrevivente do teste anterior, previa 23,1 M —
+também morto.
+
+### Por que toda lei de potência falhou
+
+O expoente **cresce** com o nível:
+
+| faixa | expoente local |
+|---|---|
+| 16 → 17 | n^3,25 |
+| 20 → 21 | n^3,26 |
+| 26 → 28 | n^3,19 |
+| **114 → 115** | **n^5,46** |
+
+Nenhuma potência única cobre 3,2 e 5,5 ao mesmo tempo. A forma que cobre é
+potência com expoente variável — polinômio em `ln(n)`:
+
+```
+ln(req) = -6,02040763
+        + 10,19507659 · ln(n)
+        -  2,19036901 · ln(n)²
+        +  0,22926319 · ln(n)³
+```
+
+Erro máximo **0,43%** nos 14 níveis medidos.
+
+### O vão de 29 a 113 continua sem apoio
+
+Não há uma única medição entre 29 e 113. Nessa faixa o ajuste cúbico e o
+quadrático — ambos excelentes nos pontos medidos — divergem até **15%** (no
+nível 70: 4,59 M contra 5,40 M). Interpolar ali é palpite educado, não medição.
+
+Isso se resolve sozinho: cada level up do Corujo mede um nível novo e a
+medição sempre vence a fórmula.

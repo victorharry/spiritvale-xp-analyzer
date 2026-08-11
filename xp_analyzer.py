@@ -71,16 +71,19 @@ class XPAnalyzer(ctk.CTk):
 
         self.pausado = False
         self.TETO = {"base": 150, "job": 70}   # os maximos do jogo
-        # req(n) = k * n^expoente. UMA curva so: classe e job medidos no mesmo
-        # nivel batem em 0,08% (ver NOTAS-XP.md), entao sao a mesma funcao.
-        # Ajustada sobre os niveis 16-28, onde erra no maximo 0,65%.
+        # ln(req) = a + b*ln(n) + c*ln(n)^2 + d*ln(n)^3
         #
-        # FORA dessa faixa e chute. No nivel 114 tres formas que cabem nos dados
-        # medidos com <0,7% divergem por 2x entre si — ajuste local nao licencia
-        # extrapolacao. Por isso a previsao vem sempre marcada como estimativa
-        # e qualquer medicao a substitui.
-        self.CURVA = {"base": (3.6993, 3.2434), "job": (3.6993, 3.2434)}
-        self.FAIXA_AJUSTADA = (16, 28)
+        # Nao e lei de potencia: o expoente CRESCE com o nivel (n^3,25 na faixa
+        # 16-21, n^5,46 entre 114 e 115), e foi por isso que toda potencia
+        # unica errou. UMA curva so serve para classe e job — medidos no mesmo
+        # nivel eles batem em 0,08%.
+        #
+        # Erra no maximo 0,43% nos 14 niveis medidos (16-28 e 114-115). Entre
+        # 29 e 113 nao ha medicao nenhuma e o ajuste chega a divergir 15% de
+        # outras formas igualmente boas — la e interpolacao sem apoio. Toda
+        # previsao sai marcada como estimativa e qualquer medicao a substitui.
+        self.CURVA_LN = (-6.02040763, 10.19507659, -2.19036901, 0.22926319)
+        self.FAIXA_MEDIDA = ((16, 28), (114, 115))
         # quanto XP cada nivel pede — aprendido, nao chutado (ver _aprender_no_level_up)
         self.necessario: dict[str, int] = dict(self.cfg.get("xp_necessario") or {})
         self._nivel_anterior: dict[str, int] = {}
@@ -338,10 +341,15 @@ class XPAnalyzer(ctk.CTk):
         ser confiado. Medida sempre ganha de prevista — por isso a formula so
         entra quando nao ha valor aprendido.
         """
-        k, expoente = self.CURVA.get(qual, (None, None))
-        if k is None or nivel < 1:
+        if nivel < 2:
             return None
-        return int(round(k * nivel ** expoente))
+        import math
+        ln = math.log(nivel)
+        a, b, c, d = self.CURVA_LN
+        try:
+            return int(round(math.exp(a + b * ln + c * ln * ln + d * ln ** 3)))
+        except OverflowError:
+            return None
 
     def _leitura_da_rede(self, pacote) -> dict | None:
         """A leitura no formato da barra, mas com os numeros exatos do servidor.

@@ -33,7 +33,7 @@ def conferir(rotulo, obtido, esperado):
 class Fingido:
     """So o suficiente pros metodos rodarem, sem Tk e sem rede."""
     TETO = {"base": 150, "job": 70}
-    CURVA = {"base": (3.6993, 3.2434), "job": (3.6993, 3.2434)}
+    CURVA_LN = (-6.02040763, 10.19507659, -2.19036901, 0.22926319)
     _previsto = xp_analyzer.XPAnalyzer._previsto
     _aprender_no_level_up = xp_analyzer.XPAnalyzer._aprender_no_level_up
     _leitura_da_rede = xp_analyzer.XPAnalyzer._leitura_da_rede
@@ -55,10 +55,13 @@ app = Fingido()
 print("sem nada medido, a formula entra — mas se declara estimativa:")
 sem_medida = app._leitura_da_rede(Progresso("Corujo", 5, 900, 70, 0))
 conferir("marcada como estimada", sem_medida["estimado"], True)
-conferir("formula do nivel 5", app._previsto("base", 5), 684)
-# 684 no nivel 5 contra 1.568 medido: a formula foi ajustada nos niveis
-# 16-28 e NAO vale la embaixo. Ela existe pra ser conferida no nivel alto,
-# e por isso medida sempre vence estimativa.
+conferir("formula do nivel 5", app._previsto("base", 5), 290)
+conferir("formula acerta onde FOI medida (nivel 114)",
+         abs(app._previsto("base", 114) - 39_293_970) < 39_293_970 * 0.01, True)
+# 290 no nivel 5 contra 1.568 medido de verdade: a curva foi ajustada nos
+# niveis 16-28 e 114-115, e fora dessas faixas nao tem apoio. Esta fixado aqui
+# de proposito, pra ninguem confundir "0,43% nos pontos medidos" com
+# "confiavel em qualquer nivel" — por isso medida sempre vence estimativa.
 
 print("\nsubindo de nivel, o nivel anterior fica conhecido:")
 alimentar(app, [(5, 700), (5, 1200), (5, 1568), (6, 107)])
