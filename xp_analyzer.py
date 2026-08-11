@@ -228,13 +228,15 @@ class XPAnalyzer(ctk.CTk):
                 self._niveis_da_rede(None)
                 leitura = self._leitura_da_rede(pacote)
                 if leitura is None:
-                    self.fila.put(("deteccao", self._resumo_rede()
-                                   + "level size unknown until you level up"))
-                else:
-                    if not self.pausado:
-                        self.rastreador.registrar(
-                            leitura, time.time() - self.deslocamento)
-                    self.fila.put(("xp", leitura))
+                    # sem o tamanho do nivel nao ha porcentagem, mas o nivel e o
+                    # XP existem e tem que aparecer: janela muda e pior que
+                    # janela incompleta
+                    leitura = {"base_nivel": pacote.nivel, "base_pct": None,
+                               "job_nivel": pacote.nivel_job, "job_pct": None}
+                elif not self.pausado:
+                    self.rastreador.registrar(
+                        leitura, time.time() - self.deslocamento)
+                self.fila.put(("xp", leitura))
 
             fim = time.time() + 0.5
             while time.time() < fim and not self.parar.is_set():
@@ -327,9 +329,9 @@ class XPAnalyzer(ctk.CTk):
                     self._mostrar(dados)
                 elif tipo == "erro":
                     self.janela.avisar(
-                        "looking for the XP bars",
-                        "keep playing and gaining XP for a few "
-                        "seconds so they can be identified")
+                        "waiting for the game",
+                        "the server only reports your progress when it "
+                        "changes — gain a little XP")
                 elif tipo == "deteccao":
                     self.janela.detalhe.configure(text=dados)
                 elif tipo == "fonte":
@@ -347,17 +349,20 @@ class XPAnalyzer(ctk.CTk):
         self.janela.atualizar_bloco("job", leitura["job_nivel"],
                                     leitura["job_pct"], r.eta("job"),
                                     r.taxa("job"))
-        marca = "PAUSED  ·  " if self.pausado else ""
-        # quando a rede esta viva, o XP absoluto e informacao que a barra nunca
-        # teve — vale mostrar
+        marca = "PAUSED · " if self.pausado else ""
         pacote = self.monitor.ultimo
-        exato = ""
-        if pacote is not None and self.monitor.idade <= VALIDADE_REDE:
-            exato = f"  ·  {pacote.xp:,} XP"
+        if leitura["base_pct"] is None:
+            # ainda sem porcentagem: o rodape mostra o que existe de verdade,
+            # que e o XP exato do servidor. Curto, senao a janela corta.
+            nome = pacote.nome if pacote else "?"
+            xp = f"{pacote.xp:,}" if pacote else "?"
+            self.janela.detalhe.configure(text=f"{marca}{nome} · {xp} XP")
+            return
+        exato = f" · {pacote.xp:,} XP" if pacote else ""
         self.janela.detalhe.configure(
-            text=marca + f"session  class +{r.ganho_total('base') or 0:.1f}%"
-                 f"  ·  job +{r.ganho_total('job') or 0:.1f}%"
-                 f"  ·  {motor_xp.formatar_tempo(r.duracao())}{exato}")
+            text=marca + f"class +{r.ganho_total('base') or 0:.1f}%"
+                 f" · job +{r.ganho_total('job') or 0:.1f}%"
+                 f" · {motor_xp.formatar_tempo(r.duracao())}{exato}")
         self.janela.desenhar(r.historico, r.duracao())
 
 

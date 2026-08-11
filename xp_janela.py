@@ -143,10 +143,18 @@ class JanelaXP(ctk.CTkToplevel):
     # nivel maximo de cada barra: chegando ali, nao ha proximo nivel pra estimar
     TETO = {"base": 150, "job": 70}
 
-    def atualizar_bloco(self, qual: str, nivel: int, pct: float,
+    def atualizar_bloco(self, qual: str, nivel: int, pct: float | None,
                         eta: float | None, taxa: float | None) -> None:
         bloco = self.blocos[qual]
         bloco["nivel"].configure(text=f"level {nivel}")
+
+        # pct None = o servidor deu o nivel e o XP, mas ninguem sabe ainda
+        # quanto este nivel PEDE. Sem isso nao existe porcentagem — e dizer
+        # "0.0% done" seria inventar. Aqui a janela pede o que falta.
+        if pct is None:
+            bloco["eta"].configure(text="—", text_color=TEXTO_SUB)
+            bloco["rodape"].configure(text="click the level ↑ and type the %")
+            return
 
         # Barra no maximo ficava dizendo "measuring..." pra sempre: sem ganho a
         # taxa e 0, o ETA vira None e a interface parecia travada. Agora ela diz
