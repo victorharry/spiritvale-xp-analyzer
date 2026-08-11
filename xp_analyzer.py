@@ -77,7 +77,9 @@ class XPAnalyzer(ctk.CTk):
         self.TETO = motor_xp.LeitorMemoria.TETO
         # quanto XP cada nivel pede — aprendido, nao chutado (ver _aprender_necessario)
         self.necessario: dict[str, int] = dict(self.cfg.get("xp_necessario") or {})
-        self._amostras: dict[str, list[float]] = {}
+        self._amostras: dict[str, dict[int, float]] = {}
+        self._nivel_anterior: dict[str, int] = {}
+        self._pico: dict[str, int] = {}
         self.deslocamento = 0.0     # segundos pausados, descontados do relogio
         self._pausa_em = 0.0
         self.janela = JanelaXP(self, ao_fechar=self.encerrar,
@@ -241,6 +243,7 @@ class XPAnalyzer(ctk.CTk):
             # exato do servidor em vez de porcentagem estimada de pixel
             pacote = self.monitor.ultimo if rede_manda else None
             if pacote is not None:
+                self._aprender_no_level_up(pacote)
                 if leitura:
                     self._aprender_necessario(pacote, leitura)
                 exata = self._leitura_da_rede(pacote)
@@ -248,7 +251,7 @@ class XPAnalyzer(ctk.CTk):
                     leitura = exata
                 elif not leitura:
                     self.fila.put(("deteccao", self._resumo_rede()
-                                   + "learning how big this level is…"))
+                                   + "learning level size…"))
 
             if leitura and self.pausado:
                 pass          # segue lendo (o nivel continua conferido), mas
@@ -287,7 +290,36 @@ class XPAnalyzer(ctk.CTk):
         pacote = self.monitor.ultimo
         if pacote is None:
             return ""
-        return (f"{pacote.nome} lv{pacote.nivel} · {pacote.xp:,} XP  ·  ")
+        # curto de proposito: o rodape divide espaco com o aviso de calibracao,
+        # e texto comprido demais era cortado pela esquerda
+        return f"{pacote.nome} · {pacote.xp:,} XP · "
+
+    def _aprender_no_level_up(self, pacote) -> None:
+        """Subir de nivel entrega o tamanho do nivel anterior — sem a barra.
+
+        O maior XP visto antes da virada e, na pratica, o que aquele nivel
+        pedia: as leituras chegam de poucos em poucos segundos, entao o erro
+        fica bem abaixo de 1%.
+
+        E a unica fonte que nao depende de ler a tela. A barra continua util
+        so pra NAO ter que esperar um level up pra ter estimativa no nivel em
+        que voce ja esta.
+        """
+        for qual, nivel, xp in (("base", pacote.nivel, pacote.xp),
+                                ("job", pacote.nivel_job, pacote.xp_job)):
+            anterior = self._nivel_anterior.get(qual)
+            pico = self._pico.get(qual, 0)
+            if anterior is not None and nivel > anterior and pico > 0:
+                chave = f"{qual}:{anterior}"
+                self.necessario[chave] = pico
+                self.cfg["xp_necessario"] = self.necessario
+                comum.salvar_config(self.cfg)
+                self.fila.put(("fonte", f"level size from level up: "
+                                        f"{chave} = {pico:,} XP"))
+            if nivel != anterior:
+                self._pico[qual] = 0
+            self._nivel_anterior[qual] = nivel
+            self._pico[qual] = max(self._pico.get(qual, 0), xp)
 
     def _aprender_necessario(self, pacote, leitura: dict) -> None:
         """Descobre quanto XP o nivel pede, cruzando as duas fontes.
@@ -305,12 +337,22 @@ class XPAnalyzer(ctk.CTk):
             if nivel >= self.TETO.get(qual, 10**9) or pct < 5.0 or xp <= 0:
                 continue
             chave = f"{qual}:{nivel}"
-            amostras = self._amostras.setdefault(chave, [])
-            amostras.append(xp / (pct / 100.0))
-            del amostras[:-21]
-            if len(amostras) < 5:
+            amostras = self._amostras.setdefault(chave, {})
+            amostras[xp] = xp / (pct / 100.0)
+            for velho in sorted(amostras)[:-12]:
+                del amostras[velho]
+            # exijo XPs DIFERENTES, nao so muitas leituras: com o XP parado,
+            # qualquer float da tela devolve um numero constante e passaria
+            if len(amostras) < 3:
                 continue
-            mediana = sorted(amostras)[len(amostras) // 2]
+            estimativas = sorted(amostras.values())
+            mediana = estimativas[len(estimativas) // 2]
+            # e aqui mora a validacao: so a barra CERTA mantem xp/preenchimento
+            # constante enquanto o XP sobe. Qualquer outro float da tela faz
+            # essa razao passear. Se as estimativas nao concordam, nao aprendo —
+            # ficar sem estimativa e melhor que gravar uma errada no config
+            if estimativas[-1] - estimativas[0] > mediana * 0.05:
+                continue
             antigo = self.necessario.get(chave)
             if antigo and abs(mediana - antigo) <= antigo * 0.02:
                 continue
@@ -449,7 +491,7 @@ class XPAnalyzer(ctk.CTk):
                 segundos=float(self.cfg.get("xp_deteccao_segundos", 40)),
                 aviso=lambda n: self.fila.put(
                     ("deteccao", self._resumo_rede()
-                     + f"detecting the bar… {n} candidates left")))
+                     + f"finding bar ({n})")))
             if achou:
                 self._aprender_cadeia(leitor)
                 leitor.definir_niveis(self.cfg.get("xp_nivel_base") or 1,

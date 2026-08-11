@@ -46,17 +46,25 @@ galinho = Progresso("Galinho", 114, 6_000_000, 70, 0)
 print("antes de aprender, a rede sozinha nao sabe a porcentagem:")
 conferir("sem tamanho de nivel, nao inventa", app._leitura_da_rede(galinho), None)
 
-print("\naprendendo com a barra (6M de XP marcando 40%):")
-for _ in range(4):
+print("\ncom o XP PARADO nao aprende, por mais que insista:")
+for _ in range(20):
     app._aprender_necessario(galinho, {"base_pct": 40.0, "job_pct": 100.0})
-conferir("4 amostras ainda e pouco", app.necessario.get("base:114"), None)
-app._aprender_necessario(galinho, {"base_pct": 40.0, "job_pct": 100.0})
-conferir("na quinta, aprende", app.necessario.get("base:114"), 15_000_000)
+conferir("XP parado nao ensina nada", app.necessario.get("base:114"), None)
 
-print("\numa leitura ruim da barra nao estraga o aprendido:")
-for _ in range(3):
-    app._aprender_necessario(galinho, {"base_pct": 4.0, "job_pct": 100.0})
-conferir("mediana ignora o disparate", app.necessario.get("base:114"), 15_000_000)
+print("\ncom o XP subindo e a barra acompanhando (nivel de 15M):")
+for xp in (6_000_000, 7_500_000, 9_000_000):
+    subindo = Progresso("Galinho", 114, xp, 70, 0)
+    app._aprender_necessario(subindo, {"base_pct": xp / 150_000.0,
+                                       "job_pct": 100.0})
+conferir("aprende o tamanho do nivel", app.necessario.get("base:114"),
+         15_000_000)
+
+print("\nbarra ERRADA (que nao acompanha o XP) nao ensina nada:")
+errado = Fingido()
+for xp in (6_000_000, 7_500_000, 9_000_000, 11_000_000):
+    subindo = Progresso("Galinho", 114, xp, 70, 0)
+    errado._aprender_necessario(subindo, {"base_pct": 40.0, "job_pct": 100.0})
+conferir("razao instavel e recusada", errado.necessario.get("base:114"), None)
 
 print("\nagora a rede calcula tudo sozinha:")
 leitura = app._leitura_da_rede(galinho)
