@@ -26,8 +26,6 @@ a resolucao de RPC de verdade.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import personagem
 from personagem import Progresso
 

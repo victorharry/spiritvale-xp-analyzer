@@ -14,9 +14,27 @@ from __future__ import annotations
 import ctypes
 from ctypes import wintypes as w
 
-import memoria
-
 iphlpapi = ctypes.WinDLL("iphlpapi", use_last_error=True)
+k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+TH32CS_SNAPPROCESS = 0x00000002
+
+
+class PROCESSENTRY32W(ctypes.Structure):
+    """So o suficiente pra listar processos e achar o PID do jogo.
+
+    Isto e enumeracao de processos, nao leitura de memoria — nenhuma funcao
+    aqui abre handle com PROCESS_VM_READ. Ficou inline de proposito: enquanto
+    existia um modulo `memoria` importado daqui, a promessa de "nao le a
+    memoria do jogo" dependia de ninguem chamar o que estava la dentro. Agora
+    a capacidade nao existe no projeto.
+    """
+
+    _fields_ = [("dwSize", w.DWORD), ("cntUsage", w.DWORD),
+                ("th32ProcessID", w.DWORD), ("th32DefaultHeapID", ctypes.c_void_p),
+                ("th32ModuleID", w.DWORD), ("cntThreads", w.DWORD),
+                ("th32ParentProcessID", w.DWORD), ("pcPriClassBase", ctypes.c_long),
+                ("dwFlags", w.DWORD), ("szExeFile", w.WCHAR * 260)]
 
 AF_INET = 2
 AF_INET6 = 23
@@ -30,22 +48,22 @@ TAMANHO_LINHA_V6 = 28              # 16 de endereco + escopo + porta + pid
 def pids(nome: str) -> set[int]:
     """Todos os processos com esse nome (o jogo pode ter mais de uma janela)."""
     alvo = nome.lower().removesuffix(".exe")
-    snap = memoria.k32.CreateToolhelp32Snapshot(memoria.TH32CS_SNAPPROCESS, 0)
+    snap = k32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
     if snap == -1:
         return set()
     achados: set[int] = set()
     try:
-        entrada = memoria.PROCESSENTRY32W()
+        entrada = PROCESSENTRY32W()
         entrada.dwSize = ctypes.sizeof(entrada)
-        if not memoria.k32.Process32FirstW(snap, ctypes.byref(entrada)):
+        if not k32.Process32FirstW(snap, ctypes.byref(entrada)):
             return achados
         while True:
             if entrada.szExeFile.lower().removesuffix(".exe") == alvo:
                 achados.add(entrada.th32ProcessID)
-            if not memoria.k32.Process32NextW(snap, ctypes.byref(entrada)):
+            if not k32.Process32NextW(snap, ctypes.byref(entrada)):
                 return achados
     finally:
-        memoria.k32.CloseHandle(snap)
+        k32.CloseHandle(snap)
 
 
 def _tabela_udp(familia: int) -> bytes:

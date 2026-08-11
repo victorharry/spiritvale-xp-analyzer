@@ -1,4 +1,7 @@
-pillow
-mss
-numpy
+# Unica dependencia de terceiros. Todo o resto (rede, captura, decodificacao)
+# usa so a biblioteca padrao — de proposito: menos peso no instalador e menos
+# motivo pro antivirus reclamar.
 customtkinter
+
+# Fora do pip: o Npcap (https://npcap.com/#download), que e um driver e precisa
+# ser instalado a parte. Ver LEIA-ME.txt.

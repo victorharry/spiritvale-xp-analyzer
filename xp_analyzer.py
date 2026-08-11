@@ -20,13 +20,10 @@ XP e ritmo. Ficar sem estimativa e melhor que exibir uma inventada.
 
 from __future__ import annotations
 
+import math
 import queue
-import subprocess
-import sys
 import threading
 import time
-import tkinter as tk
-from pathlib import Path
 from tkinter import messagebox, simpledialog
 
 import customtkinter as ctk
@@ -343,7 +340,6 @@ class XPAnalyzer(ctk.CTk):
         """
         if nivel < 2:
             return None
-        import math
         ln = math.log(nivel)
         a, b, c, d = self.CURVA_LN
         try:
