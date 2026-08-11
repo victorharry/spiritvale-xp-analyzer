@@ -117,17 +117,61 @@ class XPAnalyzer(ctk.CTk):
         self.cfg["xp_escala"] = escala
         comum.salvar_config(self.cfg)
 
-    def corrigir_nivel(self, qual: str):
-        """Clicou no numero do nivel: deixa acertar sem editar o config."""
-        chave = "xp_nivel_base" if qual == "base" else "xp_nivel_job"
-        rotulo = "CLASS" if qual == "base" else "JOB"
-        novo = simpledialog.askinteger(
-            "XP Analyzer", f"{rotulo} level:", minvalue=1, maxvalue=999,
-            initialvalue=self.cfg.get(chave) or 1)
-        if not novo:
-            return
-        self.cfg[chave] = novo
+    def informar_porcentagem(self, qual: str, pct: float, pacote) -> str | None:
+        """A conta: XP exato do servidor + porcentagem lida por voce.
+
+        Devolve o texto do aviso, ou None se nao deu pra calcular.
+
+        O `pacote` vem de fora de proposito. A porcentagem que voce le na tela
+        vale para o XP daquele instante; se eu buscasse o XP depois da digitacao
+        estaria dividindo XP novo por porcentagem velha, e superestimando o
+        tamanho do nivel — foi exatamente assim que a medicao do job saiu 10%
+        alta no teste (ver NOTAS-XP.md).
+        """
+        nivel = pacote.nivel if qual == "base" else pacote.nivel_job
+        xp = pacote.xp if qual == "base" else pacote.xp_job
+        if nivel >= self.TETO.get(qual, 10**9):
+            return "That's already the max level — nothing to estimate."
+        if xp <= 0:
+            return "No XP in this level yet. Gain a little first."
+        if not 0 < pct <= 100:
+            return None
+        chave = f"{qual}:{nivel}"
+        self.necessario[chave] = int(round(xp / (pct / 100.0)))
+        self.cfg["xp_necessario"] = self.necessario
         comum.salvar_config(self.cfg)
+        return (f"Level {nivel} needs about {self.necessario[chave]:,} XP.\n"
+                f"({xp:,} XP was {pct}% of it)")
+
+    def corrigir_nivel(self, qual: str):
+        """Clicou no numero do nivel: pergunta a PORCENTAGEM, nao o nivel.
+
+        O nivel nao se pergunta mais — vem do servidor. O que falta e o tamanho
+        do nivel, e ate subir de nivel a unica fonte disso e voce olhando a
+        barra do jogo. Ler da sua tela e digitar nao e ler memoria: e voce
+        contando o que ve.
+        """
+        pacote = self.monitor.ultimo
+        if pacote is None:
+            messagebox.showinfo(
+                "XP Analyzer",
+                "No reading from the game yet.\n\n"
+                "The server only sends your progress when it changes — "
+                "gain a little XP and try again.")
+            return
+        rotulo = "CLASS" if qual == "base" else "JOB"
+        nivel = pacote.nivel if qual == "base" else pacote.nivel_job
+        pct = simpledialog.askfloat(
+            "XP Analyzer",
+            f"{rotulo} level {nivel}: what % does the game show?\n\n"
+            f"Read it now — the number is matched against the XP as it is "
+            f"at this moment.",
+            minvalue=0.1, maxvalue=100.0)
+        if not pct:
+            return
+        aviso = self.informar_porcentagem(qual, pct, pacote)
+        if aviso:
+            messagebox.showinfo("XP Analyzer", aviso)
 
     def pausar(self, pausado: bool):
         """Congela a contagem sem parar de ler.

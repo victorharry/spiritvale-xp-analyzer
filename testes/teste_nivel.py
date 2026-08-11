@@ -35,6 +35,7 @@ class Fingido:
     TETO = {"base": 150, "job": 70}
     _aprender_no_level_up = xp_analyzer.XPAnalyzer._aprender_no_level_up
     _leitura_da_rede = xp_analyzer.XPAnalyzer._leitura_da_rede
+    informar_porcentagem = xp_analyzer.XPAnalyzer.informar_porcentagem
 
     def __init__(self):
         self.necessario, self.cfg = {}, {}
@@ -81,6 +82,28 @@ print("\nXP parado nao inventa level up:")
 antes = dict(app.necessario)
 alimentar(app, [(7, 148), (7, 148), (7, 148)])
 conferir("nada mudou", app.necessario, antes)
+
+print("\ninformando a porcentagem a mao — o atalho que dispensa esperar o level up:")
+mao = Fingido()
+# numeros reais do teste com o Corujo (ver NOTAS-XP.md)
+corujo = Progresso("Corujo", 18, 18_293, 13, 13_297)
+mao.informar_porcentagem("base", 42.0, corujo)
+conferir("42% de 18.293 XP -> o nivel pede ~43.555",
+         mao.necessario.get("base:18"), 43_555)
+conferir("com so uma ponta informada, ainda nao fecha",
+         mao._leitura_da_rede(corujo), None)
+mao.informar_porcentagem("job", 84.8, corujo)
+conferir("84,8% do job -> ~15.680", mao.necessario.get("job:13"), 15_680)
+conferir("com as duas, a estimativa fecha sozinha",
+         round(mao._leitura_da_rede(corujo)["base_pct"], 1), 42.0)
+
+print("\nrecusa os casos em que a conta nao existe:")
+conferir("nivel maximo nao tem proximo",
+         "max level" in (mao.informar_porcentagem(
+             "base", 50.0, Progresso("Galinho", 150, 0, 70, 0)) or ""), True)
+conferir("sem XP no nivel, nao ha o que dividir",
+         "Gain a little" in (mao.informar_porcentagem(
+             "base", 50.0, Progresso("Corujo", 19, 0, 14, 0)) or ""), True)
 
 print("\n" + ("FALHAS: " + ", ".join(falhas) if falhas else "TUDO OK"))
 sys.exit(1 if falhas else 0)
