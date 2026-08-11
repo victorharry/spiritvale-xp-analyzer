@@ -160,7 +160,8 @@ def cacar(dados: bytes, nome_esperado: str | None = None) -> list[Progresso]:
     for i in range(max(0, limite) + 1):
         if not _inicio_plausivel(dados, i):
             continue
-        progresso = personagem.decodificar(dados[i:], com_tipo_de_update=False)
+        progresso = personagem.decodificar(dados[i:], com_tipo_de_update=False,
+                                           exigir_guid=True)
         if progresso is None:
             continue
         if nome_esperado is not None and progresso.nome != nome_esperado:
@@ -172,7 +173,10 @@ def cacar(dados: bytes, nome_esperado: str | None = None) -> list[Progresso]:
 
 
 def _nome_aceitavel(nome: str) -> bool:
-    return bool(nome) and nome != "?" and all(c.isprintable() for c in nome)
+    if not nome or nome == "?" or not all(c.isprintable() for c in nome):
+        return False
+    # nome com cara de GUID e leitura deslocada, nao personagem
+    return not personagem.GUID.match(nome)
 
 
 class Cacador:
@@ -185,6 +189,7 @@ class Cacador:
     """
 
     CONFIRMACOES = 2
+    TROCA = 4
 
     def __init__(self):
         self.nome: str | None = None
@@ -192,17 +197,23 @@ class Cacador:
 
     def alimentar(self, dados: bytes) -> Progresso | None:
         """O progresso mais confiavel deste conteudo, se houver."""
-        candidatos = cacar(dados, nome_esperado=self.nome)
+        candidatos = cacar(dados)
         if not candidatos:
             return None
 
-        if self.nome is not None:
-            return candidatos[0]
+        for candidato in candidatos:
+            if candidato.nome == self.nome:
+                return candidato
 
+        # nenhum e o personagem travado. Pode ser so a lista de personagens da
+        # tela de selecao passando (cada um aparece uma ou duas vezes) ou uma
+        # troca de verdade — por isso trocar custa mais confirmacoes do que
+        # travar da primeira vez
+        limite = self.TROCA if self.nome is not None else self.CONFIRMACOES
         for candidato in candidatos:
             contagem = self._contagem.get(candidato.nome, 0) + 1
             self._contagem[candidato.nome] = contagem
-            if contagem >= self.CONFIRMACOES:
+            if contagem >= limite:
                 self.nome = candidato.nome
                 self._contagem.clear()
                 return candidato

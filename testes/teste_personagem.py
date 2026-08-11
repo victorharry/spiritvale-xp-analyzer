@@ -41,13 +41,17 @@ def lista(saida, valores, escreve):
         escreve(v)
 
 
-def sintetico(com_update=True, nome="Example Hero"):
-    """Mesma sequencia de campos do helper deles."""
+def sintetico(com_update=True, nome="Example Hero", uid="example-character-id"):
+    """Mesma sequencia de campos do helper deles.
+
+    O `uid` e parametro porque o helper deles usa um id qualquer, mas no jogo
+    de verdade esse campo e um GUID — e a cacada as cegas exige o formato.
+    """
     o = []
     if com_update:
         packed(o, 4)
     booleano(o, False)
-    texto(o, "example-character-id")
+    texto(o, uid)
     texto(o, "example-account")
     packed(o, 7)
     texto(o, "")

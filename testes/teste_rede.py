@@ -169,7 +169,12 @@ conferir("split remontado na ordem da sequencia", saida,
 # -- a cacada -------------------------------------------------------------
 
 print("\ncacada do CharacterData:")
-personagem_bytes = sintetico(com_update=True, nome="Batato Frito")
+# UID em formato de GUID: no jogo real ele e sempre assim, e a cacada usa isso
+# como evidencia. Sem o formato, a leitura e recusada de proposito — foi o que
+# derrubou o falso positivo que acompanhava toda leitura boa na captura real.
+GUID_EXEMPLO = "5defcee6-0dc8-47bb-a2dd-893784a975e2"
+personagem_bytes = sintetico(com_update=True, nome="Batato Frito",
+                             uid=GUID_EXEMPLO)
 recheio = b"\x99\x02\x7f" * 30 + personagem_bytes + b"\x00\x11" * 40
 achados = fishnet.cacar(recheio)
 conferir("acha o personagem no meio do pacote", len(achados) >= 1, True)
@@ -193,9 +198,22 @@ segundo = cacador.alimentar(recheio)
 conferir("segundo acerto trava o nome", segundo.nome if segundo else None,
          "Batato Frito")
 conferir("nome travado", cacador.nome, "Batato Frito")
-outro = fishnet.cacar(sintetico(com_update=True, nome="Outra Pessoa"),
+outro = fishnet.cacar(sintetico(com_update=True, nome="Outra Pessoa",
+                                uid=GUID_EXEMPLO),
                       nome_esperado="Batato Frito")
-conferir("com o nome travado, outro personagem e ignorado", outro, [])
+conferir("filtro por nome ignora outro personagem", outro, [])
+conferir("UID que nao e GUID e recusado",
+         fishnet.cacar(sintetico(com_update=True, nome="Batato Frito")), [])
+
+# na tela de selecao o roster inteiro passa uma vez cada; se isso roubasse o
+# travamento, o medidor seguiria o personagem errado. Trocar custa mais caro.
+outra = sintetico(com_update=True, nome="Outra Pessoa", uid=GUID_EXEMPLO)
+conferir("roster passando nao rouba o travamento",
+         [cacador.alimentar(outra) for _ in range(3)][-1], None)
+conferir("continua no personagem certo", cacador.nome, "Batato Frito")
+trocou = cacador.alimentar(outra)
+conferir("insistindo, a troca acontece",
+         trocou.nome if trocou else None, "Outra Pessoa")
 
 # -- pilha inteira --------------------------------------------------------
 
