@@ -31,10 +31,15 @@ from tkinter import messagebox, simpledialog
 import customtkinter as ctk
 
 import cadeia
+import captura
 import comum
 import memoria
+import pcap
 import xp as motor_xp
 from xp_janela import JanelaXP
+
+# depois disso, uma leitura de rede vira "velha" e para de mandar nos niveis
+VALIDADE_REDE = 300.0
 
 
 class XPAnalyzer(ctk.CTk):
@@ -46,12 +51,22 @@ class XPAnalyzer(ctk.CTk):
         self.cfg = comum.carregar_config()
         comum.ativar_dpi()
 
+        self.fila: queue.Queue = queue.Queue()
+        self.parar = threading.Event()
+
+        # o nivel vem dos pacotes do jogo quando da; a memoria so tem o
+        # preenchimento da barra, que nao carrega numero nenhum
+        self.rede_disponivel = pcap.disponivel()
+        self.monitor = captura.Monitor(
+            nome_processo=self.cfg.get("processo_jogo") or captura.NOME_PROCESSO,
+            ao_avisar=lambda texto: self.fila.put(("fonte", f"network: {texto}")))
+        if self.rede_disponivel:
+            self.monitor.iniciar()
+
         if not self._pedir_niveis():
             self.destroy()
             raise SystemExit(1)
 
-        self.fila: queue.Queue = queue.Queue()
-        self.parar = threading.Event()
         self.rastreador = motor_xp.Rastreador(
             janela_minutos=float(self.cfg.get("xp_janela_minutos", 15)))
 
@@ -72,11 +87,14 @@ class XPAnalyzer(ctk.CTk):
         self._drenar()
 
     def _pedir_niveis(self) -> bool:
-        """Pergunta os niveis uma vez — a barra guarda so o preenchimento.
+        """Ultimo recurso: perguntar o nivel.
 
-        Dai em diante eles sobem sozinhos: subir de nivel e detectado pela queda
-        brusca da barra, e o numero novo fica gravado pra proxima sessao.
+        So acontece quando a captura de rede nao esta disponivel. Com ela, o
+        servidor manda nivel e XP absolutos e nao ha nada pra perguntar — que
+        era o incomodo: a barra guarda so o preenchimento, nunca o numero.
         """
+        if self.rede_disponivel:
+            return True
         if self.cfg.get("xp_nivel_base") and self.cfg.get("xp_nivel_job"):
             return True
         base = simpledialog.askinteger(
@@ -168,6 +186,7 @@ class XPAnalyzer(ctk.CTk):
 
     def encerrar(self):
         self.parar.set()
+        self.monitor.parar()
         try:
             self.cfg["xp_overlay_pos"] = [self.janela.winfo_x(),
                                           self.janela.winfo_y()]
@@ -186,6 +205,7 @@ class XPAnalyzer(ctk.CTk):
 
         while not self.parar.is_set():
             leitura = None
+            rede_manda = self._niveis_da_rede(leitor)
             if leitor is None:
                 ate_retentar -= 1
                 if ate_retentar <= 0:
@@ -217,7 +237,11 @@ class XPAnalyzer(ctk.CTk):
                 falhas = recusadas = 0
                 conhecido = leitura["base_nivel"]
                 self.rastreador.registrar(leitura, time.time() - self.deslocamento)
-                if (leitura["base_nivel"] != self.cfg.get("xp_nivel_base")
+                # com a rede viva, o nivel dela e o certo: a barra so DEDUZ o
+                # level up por uma queda brusca, e deduzir erra
+                if rede_manda:
+                    pass
+                elif (leitura["base_nivel"] != self.cfg.get("xp_nivel_base")
                         or leitura["job_nivel"] != self.cfg.get("xp_nivel_job")):
                     self.cfg["xp_nivel_base"] = leitura["base_nivel"]
                     self.cfg["xp_nivel_job"] = leitura["job_nivel"]
@@ -237,6 +261,28 @@ class XPAnalyzer(ctk.CTk):
             fim = time.time() + intervalo
             while time.time() < fim and not self.parar.is_set():
                 time.sleep(min(0.1, intervalo))
+
+    def _niveis_da_rede(self, leitor) -> bool:
+        """Aplica o nivel que veio dos pacotes. Diz se a rede esta mandando.
+
+        O servidor entrega nivel e XP absolutos prontos; nao ha estimativa nem
+        nada pro usuario digitar. Enquanto isso estiver chegando, o palpite da
+        barra sobre level up nao vale.
+        """
+        pacote = self.monitor.ultimo
+        if pacote is None or self.monitor.idade > VALIDADE_REDE:
+            return False
+        mudou = (pacote.nivel != self.cfg.get("xp_nivel_base")
+                 or pacote.nivel_job != self.cfg.get("xp_nivel_job"))
+        if mudou:
+            self.cfg["xp_nivel_base"] = pacote.nivel
+            self.cfg["xp_nivel_job"] = pacote.nivel_job
+            comum.salvar_config(self.cfg)
+            self.fila.put(("fonte", f"network: {pacote.nome} — class "
+                                    f"{pacote.nivel}, job {pacote.nivel_job}"))
+        if leitor is not None and mudou:
+            leitor.definir_niveis(pacote.nivel, pacote.nivel_job)
+        return True
 
     def _tentar_cadeia(self):
         """Caminho gravado: resolve na hora, sem varrer e sem esperar XP."""
@@ -366,10 +412,16 @@ class XPAnalyzer(ctk.CTk):
                                     leitura["job_pct"], r.eta("job"),
                                     r.taxa("job"))
         marca = "PAUSED  ·  " if self.pausado else ""
+        # quando a rede esta viva, o XP absoluto e informacao que a barra nunca
+        # teve — vale mostrar
+        pacote = self.monitor.ultimo
+        exato = ""
+        if pacote is not None and self.monitor.idade <= VALIDADE_REDE:
+            exato = f"  ·  {pacote.xp:,} XP"
         self.janela.detalhe.configure(
             text=marca + f"session  class +{r.ganho_total('base') or 0:.1f}%"
                  f"  ·  job +{r.ganho_total('job') or 0:.1f}%"
-                 f"  ·  {motor_xp.formatar_tempo(r.duracao())}")
+                 f"  ·  {motor_xp.formatar_tempo(r.duracao())}{exato}")
         self.janela.desenhar(r.historico, r.duracao())
 
 

@@ -27,6 +27,9 @@ WizardStyle=modern
 PrivilegesRequired=lowest
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\{#Exe}
+; a leitura exata depende do Npcap, que e um download separado — a pagina final
+; do assistente e o unico lugar onde o usuario com certeza le isso
+InfoAfterFile=LEIA-ME.txt
 
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
@@ -38,6 +41,7 @@ Name: "desktopicon"; Description: "Criar atalho na area de trabalho"; \
 [Files]
 ; a pasta inteira do PyInstaller: o .exe sozinho nao roda, precisa do _internal
 Source: "dist\{#Nome}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "LEIA-ME.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#Nome}"; Filename: "{app}\{#Exe}"

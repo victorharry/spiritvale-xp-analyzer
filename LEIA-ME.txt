@@ -1,0 +1,44 @@
+XP Analyzer
+===========
+
+Mostra quanto falta pro proximo nivel de classe e de job, com XP por hora e um
+grafico do ritmo, numa janelinha que voce arrasta por cima do jogo.
+
+
+LEITURA EXATA (recomendado): instale o Npcap
+--------------------------------------------
+
+Com o Npcap instalado, o XP Analyzer le o nivel e o XP direto dos pacotes que o
+servidor do jogo ja manda pro seu computador. E o valor exato, e voce nao
+precisa digitar nada.
+
+    1. baixe em  https://npcap.com
+    2. na instalacao, MARQUE "Install Npcap in WinPcap API-compatible Mode"
+    3. abra o XP Analyzer
+
+Sem o Npcap o programa continua funcionando: ele le a barra de XP da memoria do
+jogo e pergunta seu nivel uma vez, no primeiro uso.
+
+
+O que o programa faz e o que ele nao faz
+----------------------------------------
+
+Faz:
+  - le a memoria do processo do jogo (somente leitura)
+  - le os pacotes de rede que ja estao chegando nesta maquina
+
+Nao faz:
+  - nao escreve nada na memoria do jogo
+  - nao envia, injeta nem modifica pacote nenhum
+  - nao automatiza nada dentro do jogo: nao clica, nao move o mouse, nao
+    aperta tecla
+
+A captura e passiva e nao promiscua: so o trafego desta maquina, so leitura.
+
+
+Nao aparece nada?
+-----------------
+
+Rode o diagnostico, que lista o que checar na ordem em que costuma falhar:
+
+    ouvir.exe          (ou, rodando pelo codigo:  python ouvir.py)

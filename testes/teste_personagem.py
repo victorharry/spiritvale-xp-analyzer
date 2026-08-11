@@ -81,25 +81,29 @@ def conferir(rotulo, obtido, esperado):
           f"  (esperado {esperado!r})")
 
 
-print("payload sintetico do spirit-vale-tools:")
-p = personagem.decodificar(sintetico(True), com_tipo_de_update=True)
-conferir("nome", p.nome if p else None, "Example Hero")
-conferir("nivel de classe", p.nivel if p else None, 42)
-conferir("XP absoluto", p.xp if p else None, 12345)
-conferir("nivel de job", p.nivel_job if p else None, 18)
-conferir("XP de job", p.xp_job if p else None, 678)
+# o teste da rede importa os construtores daqui; sem esta guarda, rodar aquele
+# rodaria este junto e a saida sairia com dois "TUDO OK" embaralhados
+if __name__ == "__main__":
+    print("payload sintetico do spirit-vale-tools:")
+    p = personagem.decodificar(sintetico(True), com_tipo_de_update=True)
+    conferir("nome", p.nome if p else None, "Example Hero")
+    conferir("nivel de classe", p.nivel if p else None, 42)
+    conferir("XP absoluto", p.xp if p else None, 12345)
+    conferir("nivel de job", p.nivel_job if p else None, 18)
+    conferir("XP de job", p.xp_job if p else None, 678)
 
-print("\nrecusa o que nao entende, em vez de inventar:")
-conferir("truncado", personagem.decodificar(sintetico(True)[:12], True), None)
-conferir("lixo", personagem.decodificar(b"\x00" * 40, True), None)
-conferir("vazio", personagem.decodificar(b"", True), None)
+    print("\nrecusa o que nao entende, em vez de inventar:")
+    conferir("truncado", personagem.decodificar(sintetico(True)[:12], True), None)
+    conferir("lixo", personagem.decodificar(b"\x00" * 40, True), None)
+    conferir("vazio", personagem.decodificar(b"", True), None)
 
-print("\nsanidade dos limites do jogo:")
-conferir("nivel acima de 150 e recusado",
-         personagem.Progresso("x", 151, 0, 1, 0).plausivel(), False)
-conferir("job acima de 70 e recusado",
-         personagem.Progresso("x", 1, 0, 71, 0).plausivel(), False)
-conferir("valores normais passam",
-         personagem.Progresso("x", 112, 999, 70, 5).plausivel(), True)
+    print("\nsanidade dos limites do jogo:")
+    conferir("nivel acima de 150 e recusado",
+             personagem.Progresso("x", 151, 0, 1, 0).plausivel(), False)
+    conferir("job acima de 70 e recusado",
+             personagem.Progresso("x", 1, 0, 71, 0).plausivel(), False)
+    conferir("valores normais passam",
+             personagem.Progresso("x", 112, 999, 70, 5).plausivel(), True)
 
-print("\n" + ("FALHAS: " + ", ".join(falhas) if falhas else "TUDO OK"))
+    print("\n" + ("FALHAS: " + ", ".join(falhas) if falhas else "TUDO OK"))
+    sys.exit(1 if falhas else 0)
