@@ -74,6 +74,9 @@ class XPAnalyzer(ctk.CTk):
         # todos testados e nenhum chega na precisao das medicoes.
         # quanto XP cada nivel pede — aprendido, nao chutado (ver _aprender_no_level_up)
         self.necessario: dict[str, int] = dict(self.cfg.get("xp_necessario") or {})
+        # todas as estimativas ja registradas de cada nivel, pra mediana
+        self._historico: dict[str, list[int]] = {
+            k: list(v) for k, v in (self.cfg.get("xp_amostras") or {}).items()}
         self._nivel_anterior: dict[str, int] = {}
         self._pico: dict[str, int] = {}
         self.deslocamento = 0.0     # segundos pausados, descontados do relogio
@@ -165,13 +168,27 @@ class XPAnalyzer(ctk.CTk):
             xp = pacote.xp if qual == "base" else pacote.xp_job
             if nivel >= self.TETO.get(qual, 10**9) or xp <= 0 or not 0 < pct <= 100:
                 continue
-            necessario = int(round(xp / (pct / 100.0)))
+            estimativa = int(round(xp / (pct / 100.0)))
             previsto = self._previsto(qual, nivel)
-            erro = 100.0 * (previsto - necessario) / necessario if previsto else 0.0
-            linhas.append(f"{qual}\t{nivel}\t{xp}\t{pct}\t{necessario}\t"
+            erro = 100.0 * (previsto - estimativa) / estimativa if previsto else 0.0
+            linhas.append(f"{qual}\t{nivel}\t{xp}\t{pct}\t{estimativa}\t"
                           f"{previsto}\t{erro:+.1f}")
-            self.necessario[f"{qual}:{nivel}"] = necessario
-            resumo.append(f"{qual} {nivel}: {necessario:,} ({erro:+.1f}% vs formula)")
+
+            # Guarda TODAS as estimativas do nivel e fica com a mediana, em vez
+            # de o ultimo registro virar a verdade. Duas fontes de erro pedem
+            # isso: a barra arredonda na primeira decimal, e entre voce ler a
+            # porcentagem e clicar o XP ja subiu um pouco (pior ainda em grupo).
+            # Uma amostra do nivel 115 saiu 9% acima das outras dez — sozinha,
+            # ela substituiria as boas.
+            chave = f"{qual}:{nivel}"
+            historico = self._historico.setdefault(chave, [])
+            historico.append(estimativa)
+            del historico[:-25]
+            necessario = sorted(historico)[len(historico) // 2]
+            self.necessario[chave] = necessario
+            self.cfg["xp_amostras"] = self._historico
+            resumo.append(f"{qual} {nivel}: {necessario:,} "
+                          f"({len(historico)} amostra(s), {erro:+.1f}% vs previsto)")
 
         if not linhas:
             return "nothing to record (max level, or no XP yet)"

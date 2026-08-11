@@ -35,6 +35,8 @@ CONFIG_PADRAO = {
     # quanto XP cada nivel pede, medido (nao chutado). Chaves "base:114",
     # "job:16" — ver _aprender_no_level_up e registrar_amostra
     "xp_necessario": {},
+    # todas as estimativas de cada nivel; o valor usado e a mediana delas
+    "xp_amostras": {},
 }
 
 
