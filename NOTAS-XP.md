@@ -84,3 +84,39 @@ resolver o protocolo. O que impede isso de virar chute:
 Na tela de seleção o roster inteiro passa uma vez cada (`Dipirono`,
 `Novalgino`, `Tinhoso`...), então trocar de personagem custa mais confirmações
 do que travar da primeira vez.
+
+## Validação cruzada: level up × regra de três
+
+Duas medições independentes do mesmo personagem (Corujo), sem nada lido da
+memória:
+
+| | classe | job |
+|---|---|---|
+| aprendido no level up | nível 17 = 34.392 | nível 12 = 11.436 |
+| regra de três (% digitada) | nível 18 = 43.555 | nível 13 = 15.680 |
+| razão entre níveis consecutivos | **1,266×** | 1,371× |
+
+O crescimento medido entre os níveis 12 e 17 foi **1,246×**. A regra de três na
+classe deu 1,266× — dois métodos que não compartilham nenhuma fonte, batendo
+em 1,6%.
+
+O job destoou (1,371×) porque a porcentagem foi lida da tela alguns minutos
+antes da captura do XP. Dividir XP novo por porcentagem velha superestima o
+tamanho do nível. **Consequência de projeto: o campo de porcentagem tem que
+capturar o XP no instante em que o usuário digita, não depois.**
+
+## A curva não extrapola — as duas tentativas, e como cada uma falha
+
+Observado de verdade: o Galinho no nível 114 já apareceu com 18.720.722 XP
+dentro do nível.
+
+| ajuste | previsão pro 114 | erro |
+|---|---|---|
+| lei de potência `27,9 × n^2,37` (níveis 1–11) | 2.045.755 | 9× pra baixo |
+| geométrica `1,246×` por nível (níveis 12–17) | 65 trilhões | 3,5 milhões× pra cima |
+
+A curva cresce ~25% por nível no começo e **achata muito** depois. Cada ajuste
+erra para um lado diferente, o que descarta qualquer fórmula simples: para
+saber o nível 114 é preciso medir perto do 114.
+
+Por isso aprender nível a nível não é contorno — é a única resposta correta.
