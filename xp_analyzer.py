@@ -74,6 +74,10 @@ class XPAnalyzer(ctk.CTk):
 
         self.pausado = False
         self.leitor = None
+        self.TETO = motor_xp.LeitorMemoria.TETO
+        # quanto XP cada nivel pede — aprendido, nao chutado (ver _aprender_necessario)
+        self.necessario: dict[str, int] = dict(self.cfg.get("xp_necessario") or {})
+        self._amostras: dict[str, list[float]] = {}
         self.deslocamento = 0.0     # segundos pausados, descontados do relogio
         self._pausa_em = 0.0
         self.janela = JanelaXP(self, ao_fechar=self.encerrar,
@@ -232,6 +236,20 @@ class XPAnalyzer(ctk.CTk):
                     ate_retentar = int(self.cfg.get("xp_retentar_memoria", 30))
                     self.fila.put(("fonte", "memory link lost — back to OCR"))
 
+            # com as duas fontes na mao, aprende o tamanho do nivel; com o
+            # tamanho aprendido, a rede substitui a barra por completo — numero
+            # exato do servidor em vez de porcentagem estimada de pixel
+            pacote = self.monitor.ultimo if rede_manda else None
+            if pacote is not None:
+                if leitura:
+                    self._aprender_necessario(pacote, leitura)
+                exata = self._leitura_da_rede(pacote)
+                if exata is not None:
+                    leitura = exata
+                elif not leitura:
+                    self.fila.put(("deteccao", self._resumo_rede()
+                                   + "learning how big this level is…"))
+
             if leitura and self.pausado:
                 pass          # segue lendo (o nivel continua conferido), mas
                               # nada entra na conta enquanto estiver pausado
@@ -263,6 +281,65 @@ class XPAnalyzer(ctk.CTk):
             fim = time.time() + intervalo
             while time.time() < fim and not self.parar.is_set():
                 time.sleep(min(0.1, intervalo))
+
+    def _resumo_rede(self) -> str:
+        """Prefixo pro rodape: prova de vida enquanto a barra nao foi achada."""
+        pacote = self.monitor.ultimo
+        if pacote is None:
+            return ""
+        return (f"{pacote.nome} lv{pacote.nivel} · {pacote.xp:,} XP  ·  ")
+
+    def _aprender_necessario(self, pacote, leitura: dict) -> None:
+        """Descobre quanto XP o nivel pede, cruzando as duas fontes.
+
+        O servidor manda XP absoluto mas nao manda o tamanho do nivel; a barra
+        manda o tamanho (em porcentagem) mas nao manda numero nenhum. Juntas,
+        elas fecham a conta: necessario = xp / porcentagem.
+
+        Uso a MEDIANA de varias amostras porque a leitura da barra tem erro, e
+        uma amostra ruim sozinha estragaria a estimativa do nivel inteiro.
+        """
+        for qual, xp, nivel, pct in (
+                ("base", pacote.xp, pacote.nivel, leitura["base_pct"]),
+                ("job", pacote.xp_job, pacote.nivel_job, leitura["job_pct"])):
+            if nivel >= self.TETO.get(qual, 10**9) or pct < 5.0 or xp <= 0:
+                continue
+            chave = f"{qual}:{nivel}"
+            amostras = self._amostras.setdefault(chave, [])
+            amostras.append(xp / (pct / 100.0))
+            del amostras[:-21]
+            if len(amostras) < 5:
+                continue
+            mediana = sorted(amostras)[len(amostras) // 2]
+            antigo = self.necessario.get(chave)
+            if antigo and abs(mediana - antigo) <= antigo * 0.02:
+                continue
+            self.necessario[chave] = int(round(mediana))
+            self.cfg["xp_necessario"] = self.necessario
+            comum.salvar_config(self.cfg)
+            self.fila.put(("fonte", f"level size learned: {chave} "
+                                    f"= {self.necessario[chave]:,} XP"))
+
+    def _leitura_da_rede(self, pacote) -> dict | None:
+        """A leitura no formato da barra, mas com os numeros exatos do servidor.
+
+        So funciona depois que o tamanho do nivel foi aprendido — antes disso
+        nao da pra dizer que fracao de um nivel sao 12 milhoes de XP.
+        """
+        def porcento(qual: str, xp: int, nivel: int) -> float | None:
+            if nivel >= self.TETO.get(qual, 10**9):
+                return 100.0
+            necessario = self.necessario.get(f"{qual}:{nivel}")
+            if not necessario:
+                return None
+            return max(0.0, min(100.0, 100.0 * xp / necessario))
+
+        base = porcento("base", pacote.xp, pacote.nivel)
+        job = porcento("job", pacote.xp_job, pacote.nivel_job)
+        if base is None or job is None:
+            return None
+        return {"base_nivel": pacote.nivel, "base_pct": base,
+                "job_nivel": pacote.nivel_job, "job_pct": job}
 
     def _niveis_da_rede(self, leitor) -> bool:
         """Aplica o nivel que veio dos pacotes. Diz se a rede esta mandando.
@@ -371,7 +448,8 @@ class XPAnalyzer(ctk.CTk):
             achou = leitor.localizar_por_comportamento(
                 segundos=float(self.cfg.get("xp_deteccao_segundos", 40)),
                 aviso=lambda n: self.fila.put(
-                    ("deteccao", f"detecting… {n} candidates left")))
+                    ("deteccao", self._resumo_rede()
+                     + f"detecting the bar… {n} candidates left")))
             if achou:
                 self._aprender_cadeia(leitor)
                 leitor.definir_niveis(self.cfg.get("xp_nivel_base") or 1,
