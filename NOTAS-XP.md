@@ -120,3 +120,33 @@ erra para um lado diferente, o que descarta qualquer fórmula simples: para
 saber o nível 114 é preciso medir perto do 114.
 
 Por isso aprender nível a nível não é contorno — é a única resposta correta.
+
+## A curva TEM forma fechada — o problema era a qualidade do dado
+
+Com 8 pontos exatos, coletados sozinhos pelo aprendizado no level up (Corujo
+subindo do 17 ao 21 de classe e do 12 ao 16 de job):
+
+| dados | ajuste | previsão pro 114 | veredito |
+|---|---|---|---|
+| níveis 1–11 (limites frouxos) | `27,9 × n^2,37` | 2,0 M | refutado |
+| **classe 17–21 (exatos)** | **`1,65 × n^3,51`** | **27,5 M** | sobrevive |
+| job 12–16 (exatos) | `2,98 × n^3,32` | 19,9 M | sobrevive raspando |
+| classe + job juntos | `3,22 × n^3,29` | 18,5 M | refutado |
+
+O ajuste da classe erra no máximo 0,7% nos quatro pontos.
+
+**Correção de uma conclusão anterior deste arquivo:** eu disse que a curva
+"achata" e que nenhuma fórmula simples serviria. Errado — a culpa era do dado.
+Limites inferiores frouxos puxam o expoente para baixo (2,37 em vez de 3,51).
+Com valores exatos, uma lei de potência única cobre a faixa medida.
+
+O ajuste conjunto ser refutado é informativo: classe e job **não** seguem a
+mesma curva.
+
+### Ainda não validado
+
+27,5 M no nível 114 é extrapolação de 93 níveis a partir de uma faixa de 5.
+Resíduo baixo localmente não garante distância. O teste barato: comparar a
+porcentagem que o jogo mostra para o Galinho com `xp ÷ 27.513.745`. Se bater,
+a fórmula está validada no topo e o `necessario` pode ser previsto em vez de
+esperado. **Não embutir a fórmula antes disso.**
