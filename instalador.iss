@@ -7,7 +7,7 @@
 ; direto, sem tela de permissao do Windows.
 
 #define Nome "XP Analyzer"
-#define Versao "1.0.0"
+#define Versao "2.0.0"
 #define Autor "victorharry"
 #define Exe "XP Analyzer.exe"
 
