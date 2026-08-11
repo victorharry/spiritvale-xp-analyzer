@@ -38,7 +38,9 @@ import pcap
 import xp as motor_xp
 from xp_janela import JanelaXP
 
-# depois disso, uma leitura de rede vira "velha" e para de mandar nos niveis
+# depois disso o XP absoluto sai do rodape, por ser informacao do momento.
+# O NIVEL nao expira: leitura velha nao fica errada, porque subir de nivel
+# exige ganhar XP e ganhar XP gera leitura nova
 VALIDADE_REDE = 300.0
 
 
@@ -270,7 +272,7 @@ class XPAnalyzer(ctk.CTk):
         barra sobre level up nao vale.
         """
         pacote = self.monitor.ultimo
-        if pacote is None or self.monitor.idade > VALIDADE_REDE:
+        if pacote is None:
             return False
         mudou = (pacote.nivel != self.cfg.get("xp_nivel_base")
                  or pacote.nivel_job != self.cfg.get("xp_nivel_job"))
