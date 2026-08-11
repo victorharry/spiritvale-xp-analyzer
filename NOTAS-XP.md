@@ -300,3 +300,49 @@ um laço sobre zero níveis devolve "cabe" para qualquer coisa.
 
 Fica como lembrete: um resultado bom demais merece uma checagem de sanidade
 antes da comemoração. `a·n²` agora é recusado com folga de 2557%.
+
+## A tabela estava no cliente o tempo todo
+
+`tabela_xp.py` — extraída de `SpiritVale_Data/sharedassets0.assets`, offset
+307425288, array de `uint32`, níveis 1 a 161 (o jogo satura em 2³¹ depois).
+
+O argumento para ela estar ali: o servidor manda XP absoluto, mas quem desenha
+a barra em porcentagem é o cliente. Para dividir, ele precisa do denominador.
+
+### O que não funcionou, e o que funcionou
+
+Procurar os valores medidos como bytes deu **177.683 ocorrências** — a faixa
+medida do nível 114 tem 100 mil de largura, e dado binário aleatório cai nela o
+tempo todo. Valor solto não prova nada.
+
+O que identificou foi a **estrutura**. Num array indexado por nível, o 22 fica
+um elemento depois do 21, o 25 três depois do 22, o 33 oito depois do 25.
+Exigindo acertos nas distâncias certas, sobrou **exatamente um candidato**, com
+6 de 6 níveis batendo.
+
+### A confirmação
+
+As 18 medições registradas — obtidas lendo a barra e cruzando com o XP dos
+pacotes, sem nenhum contato com os arquivos do jogo — **caem todas dentro da
+tabela**. Duas fontes independentes concordando.
+
+E uma tabela só serve para classe e job, o que explica os dois terem batido em
+0,08% quando medidos no mesmo nível.
+
+```
+   1          40      20      61.439      70   4.278.572
+   5       1.620      25     126.662     114  39.284.872
+  10       7.981      33     303.103     133  94.153.872
+  16      29.698      71   4.525.844     150 390.958.368
+```
+
+### Por que a busca por fórmula estava condenada
+
+Não existe fórmula. São 161 números escritos à mão — exatamente como em
+Ragnarok, onde o EXP por nível também é arquivo de dados (`job_exp.yml`). Os
+294 milhões de formas testadas não falharam por falta de espaço de busca;
+falharam porque não havia o que achar.
+
+Os dois métodos de medição continuam no código de propósito: foram eles que
+produziram a evidência que confere a tabela, e são eles que sobram se um patch
+mudar o arquivo.

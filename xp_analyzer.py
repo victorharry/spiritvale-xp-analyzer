@@ -31,6 +31,7 @@ import customtkinter as ctk
 import captura
 import comum
 import pcap
+import tabela_xp
 import xp as motor_xp
 from xp_janela import JanelaXP
 
@@ -367,7 +368,12 @@ class XPAnalyzer(ctk.CTk):
         return None                      # so tem medicao de um lado: e extrapolacao
 
     def _previsto(self, qual: str, nivel: int) -> int | None:
-        """O tamanho do nivel, interpolado entre as medicoes que o cercam.
+        """O tamanho do nivel: da tabela do jogo, ou interpolado se ela faltar.
+
+        A tabela veio dos arquivos do proprio jogo e confere com as 18 medicoes
+        independentes registradas — entao ela nao e estimativa, e o valor. Vem
+        na frente de tudo. A interpolacao ficou como rede de seguranca para um
+        patch que mude a tabela e a deixe fora de alcance.
 
         Nao ha formula global aqui, e isso e uma conclusao, nao preguica:
         polinomio, lei de potencia, potencia vezes exponencial e potencia por
@@ -382,6 +388,9 @@ class XPAnalyzer(ctk.CTk):
         """
         if nivel < 1:
             return None
+        oficial = tabela_xp.xp_do_nivel(nivel)
+        if oficial:
+            return oficial
         tabela = self._tabela_medida()
         if nivel in tabela:
             return tabela[nivel]
@@ -421,7 +430,8 @@ class XPAnalyzer(ctk.CTk):
             necessario = self.necessario.get(f"{qual}:{nivel}")
             if not necessario:
                 necessario = self._previsto(qual, nivel)
-                estimado = True
+                # so e "estimado" se nao veio da tabela do jogo
+                estimado = estimado or not tabela_xp.xp_do_nivel(nivel)
             if not necessario:
                 return None
             return max(0.0, min(100.0, 100.0 * xp / necessario))
