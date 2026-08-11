@@ -33,8 +33,9 @@ def conferir(rotulo, obtido, esperado):
 class Fingido:
     """So o suficiente pros metodos rodarem, sem Tk e sem rede."""
     TETO = {"base": 150, "job": 70}
-    CURVA_LN = (-6.02040763, 10.19507659, -2.19036901, 0.22926319)
     _previsto = xp_analyzer.XPAnalyzer._previsto
+    _tabela_medida = xp_analyzer.XPAnalyzer._tabela_medida
+    vao_ate_medicao = xp_analyzer.XPAnalyzer.vao_ate_medicao
     _aprender_no_level_up = xp_analyzer.XPAnalyzer._aprender_no_level_up
     _leitura_da_rede = xp_analyzer.XPAnalyzer._leitura_da_rede
     informar_porcentagem = xp_analyzer.XPAnalyzer.informar_porcentagem
@@ -52,16 +53,24 @@ def alimentar(app, leituras):
 
 app = Fingido()
 
-print("sem nada medido, a formula entra — mas se declara estimativa:")
-sem_medida = app._leitura_da_rede(Progresso("Corujo", 5, 900, 70, 0))
-conferir("marcada como estimada", sem_medida["estimado"], True)
-conferir("formula do nivel 5", app._previsto("base", 5), 290)
-conferir("formula acerta onde FOI medida (nivel 114)",
-         abs(app._previsto("base", 114) - 39_293_970) < 39_293_970 * 0.01, True)
-# 290 no nivel 5 contra 1.568 medido de verdade: a curva foi ajustada nos
-# niveis 16-28 e 114-115, e fora dessas faixas nao tem apoio. Esta fixado aqui
-# de proposito, pra ninguem confundir "0,43% nos pontos medidos" com
-# "confiavel em qualquer nivel" — por isso medida sempre vence estimativa.
+print("sem nenhuma medicao nao ha o que interpolar — e nao se inventa nada:")
+conferir("previsao sem tabela", app._previsto("base", 5), None)
+conferir("e a leitura toda fica de fora",
+         app._leitura_da_rede(Progresso("Corujo", 5, 900, 70, 0)), None)
+
+print("\ncom dois niveis medidos, interpola entre eles:")
+# numeros reais da captura (ver NOTAS-XP.md)
+app.necessario.update({"base:16": 29684, "base:20": 61463})
+conferir("nivel 18, entre os dois medidos", app._previsto("base", 18), 43_588)
+conferir("erro contra o real (43.525) abaixo de 1%",
+         abs(app._previsto("base", 18) - 43_525) < 43_525 * 0.01, True)
+conferir("vao entre os vizinhos medidos", app.vao_ate_medicao(18), 4)
+conferir("nivel ja medido tem vao zero", app.vao_ate_medicao(20), 0)
+
+print("\nas duas trilhas alimentam a MESMA tabela (sao a mesma curva):")
+app.necessario["job:25"] = 126_651
+conferir("medicao de job serve pra classe", app._previsto("base", 25), 126_651)
+app.necessario.clear()
 
 print("\nsubindo de nivel, o nivel anterior fica conhecido:")
 alimentar(app, [(5, 700), (5, 1200), (5, 1568), (6, 107)])

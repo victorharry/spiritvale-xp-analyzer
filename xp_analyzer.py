@@ -68,19 +68,10 @@ class XPAnalyzer(ctk.CTk):
 
         self.pausado = False
         self.TETO = {"base": 150, "job": 70}   # os maximos do jogo
-        # ln(req) = a + b*ln(n) + c*ln(n)^2 + d*ln(n)^3
-        #
-        # Nao e lei de potencia: o expoente CRESCE com o nivel (n^3,25 na faixa
-        # 16-21, n^5,46 entre 114 e 115), e foi por isso que toda potencia
-        # unica errou. UMA curva so serve para classe e job — medidos no mesmo
-        # nivel eles batem em 0,08%.
-        #
-        # Erra no maximo 0,43% nos 14 niveis medidos (16-28 e 114-115). Entre
-        # 29 e 113 nao ha medicao nenhuma e o ajuste chega a divergir 15% de
-        # outras formas igualmente boas — la e interpolacao sem apoio. Toda
-        # previsao sai marcada como estimativa e qualquer medicao a substitui.
-        self.CURVA_LN = (-6.02040763, 10.19507659, -2.19036901, 0.22926319)
-        self.FAIXA_MEDIDA = ((16, 28), (114, 115))
+        # Nao ha curva embutida. A estimativa vem de INTERPOLAR entre as
+        # medicoes do proprio usuario (ver _previsto): polinomio, lei de
+        # potencia, potencia vezes exponencial e potencia por faixas foram
+        # todos testados e nenhum chega na precisao das medicoes.
         # quanto XP cada nivel pede — aprendido, nao chutado (ver _aprender_no_level_up)
         self.necessario: dict[str, int] = dict(self.cfg.get("xp_necessario") or {})
         self._nivel_anterior: dict[str, int] = {}
@@ -326,25 +317,75 @@ class XPAnalyzer(ctk.CTk):
             self._nivel_anterior[qual] = nivel
             self._pico[qual] = max(self._pico.get(qual, 0), xp)
 
-    def _previsto(self, qual: str, nivel: int) -> int | None:
-        """O tamanho do nivel pela formula, quando ele ainda nao foi medido.
+    def _tabela_medida(self) -> dict[int, int]:
+        """Todas as medicoes numa tabela so, sem separar classe de job.
 
-        Ajuste sobre os pontos que o proprio app coletou nos level ups do
-        Corujo (classe 17-21, job 12-16), com residuo maximo de 0,7%. Ver
-        NOTAS-XP.md.
-
-        ATENCAO: no nivel 114 isso e extrapolacao de 93 niveis a partir de uma
-        faixa de 5. Esta aqui pra ser CONFERIDO contra a barra do jogo, nao pra
-        ser confiado. Medida sempre ganha de prevista — por isso a formula so
-        entra quando nao ha valor aprendido.
+        Elas SAO a mesma curva: medidos no mesmo nivel, classe e job batem em
+        0,08% (nivel 21: 72.082 x 72.023) e 0,38% (nivel 22). Juntar as duas
+        trilhas dobra a densidade da tabela de graca — medir o job do Corujo
+        melhora a estimativa da classe do Galinho.
         """
-        if nivel < 2:
+        por_nivel: dict[int, list[int]] = {}
+        for chave, valor in self.necessario.items():
+            _, _, nivel = chave.partition(":")
+            if nivel.isdigit() and valor:
+                por_nivel.setdefault(int(nivel), []).append(int(valor))
+        # mediana: uma leitura com a porcentagem defasada nao arrasta o nivel
+        return {n: sorted(v)[len(v) // 2] for n, v in por_nivel.items()}
+
+    def vao_ate_medicao(self, nivel: int) -> int | None:
+        """Quantos niveis separam as duas medicoes que cercam este.
+
+        E a medida honesta de confianca da estimativa: o erro da interpolacao
+        e funcao direta desse vao — 0,1% com 2 niveis de distancia, 2% com 40,
+        33% com 79. Ver NOTAS-XP.md.
+        """
+        tabela = self._tabela_medida()
+        if nivel in tabela:
+            return 0
+        abaixo = [n for n in tabela if n < nivel]
+        acima = [n for n in tabela if n > nivel]
+        if abaixo and acima:
+            return min(acima) - max(abaixo)
+        return None                      # so tem medicao de um lado: e extrapolacao
+
+    def _previsto(self, qual: str, nivel: int) -> int | None:
+        """O tamanho do nivel, interpolado entre as medicoes que o cercam.
+
+        Nao ha formula global aqui, e isso e uma conclusao, nao preguica:
+        polinomio, lei de potencia, potencia vezes exponencial e potencia por
+        faixas foram todos testados contra as medicoes e nenhum chega perto da
+        precisao delas (o melhor errava 1,6%, contra barras de 0,05%). O
+        expoente local nem sequer e monotono — 3,25 entre os niveis 16 e 26,
+        3,55 ate o 71, 5,42 entre o 114 e o 115. Parece tabela, nao formula.
+
+        Interpolar em log-log entre os vizinhos medidos, por outro lado, erra
+        0,1% quando eles estao a 2 niveis e 2% quando estao a 40. E melhora
+        sozinho: cada medicao sua encurta algum vao. Ver NOTAS-XP.md.
+        """
+        if nivel < 1:
             return None
-        ln = math.log(nivel)
-        a, b, c, d = self.CURVA_LN
+        tabela = self._tabela_medida()
+        if nivel in tabela:
+            return tabela[nivel]
+        abaixo = sorted(n for n in tabela if n < nivel)
+        acima = sorted(n for n in tabela if n > nivel)
+        if abaixo and acima:
+            a, b = abaixo[-1], acima[0]
+        elif len(abaixo) >= 2:
+            a, b = abaixo[-2:]           # extrapolando pra cima
+        elif len(acima) >= 2:
+            a, b = acima[:2]             # extrapolando pra baixo
+        else:
+            return None
+
         try:
-            return int(round(math.exp(a + b * ln + c * ln * ln + d * ln ** 3)))
-        except OverflowError:
+            passo = ((math.log(nivel) - math.log(a))
+                     / (math.log(b) - math.log(a)))
+            registro = (math.log(tabela[a])
+                        + passo * (math.log(tabela[b]) - math.log(tabela[a])))
+            return int(round(math.exp(registro)))
+        except (ValueError, ZeroDivisionError, OverflowError):
             return None
 
     def _leitura_da_rede(self, pacote) -> dict | None:
