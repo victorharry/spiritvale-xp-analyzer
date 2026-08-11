@@ -33,6 +33,8 @@ def conferir(rotulo, obtido, esperado):
 class Fingido:
     """So o suficiente pros metodos rodarem, sem Tk e sem rede."""
     TETO = {"base": 150, "job": 70}
+    CURVA = {"base": (1.6467, 3.512), "job": (2.9824, 3.318)}
+    _previsto = xp_analyzer.XPAnalyzer._previsto
     _aprender_no_level_up = xp_analyzer.XPAnalyzer._aprender_no_level_up
     _leitura_da_rede = xp_analyzer.XPAnalyzer._leitura_da_rede
     informar_porcentagem = xp_analyzer.XPAnalyzer.informar_porcentagem
@@ -50,9 +52,13 @@ def alimentar(app, leituras):
 
 app = Fingido()
 
-print("antes de qualquer level up, nao ha porcentagem — e nao se inventa uma:")
-conferir("sem tamanho de nivel, devolve None",
-         app._leitura_da_rede(Progresso("Corujo", 5, 900, 70, 0)), None)
+print("sem nada medido, a formula entra — mas se declara estimativa:")
+sem_medida = app._leitura_da_rede(Progresso("Corujo", 5, 900, 70, 0))
+conferir("marcada como estimada", sem_medida["estimado"], True)
+conferir("formula do nivel 5", app._previsto("base", 5), 469)
+# 469 no nivel 5 contra 1.568 medido: a formula foi ajustada nos niveis
+# 17-21 e NAO vale la embaixo. Ela existe pra ser conferida no nivel alto,
+# e por isso medida sempre vence estimativa.
 
 print("\nsubindo de nivel, o nivel anterior fica conhecido:")
 alimentar(app, [(5, 700), (5, 1200), (5, 1568), (6, 107)])
@@ -63,6 +69,7 @@ conferir("o nivel novo ainda e desconhecido",
 
 print("\ncom o tamanho conhecido, a rede calcula tudo sozinha:")
 leitura = app._leitura_da_rede(Progresso("Corujo", 5, 784, 70, 0))
+conferir("medida vence a formula", leitura["estimado"], False)
 conferir("metade do nivel da 50%", round(leitura["base_pct"], 1), 50.0)
 conferir("nivel vem do pacote", leitura["base_nivel"], 5)
 cheio = app._leitura_da_rede(Progresso("Corujo", 5, 99_999, 70, 0))
@@ -90,12 +97,14 @@ corujo = Progresso("Corujo", 18, 18_293, 13, 13_297)
 mao.informar_porcentagem("base", 42.0, corujo)
 conferir("42% de 18.293 XP -> o nivel pede ~43.555",
          mao.necessario.get("base:18"), 43_555)
-conferir("com so uma ponta informada, ainda nao fecha",
-         mao._leitura_da_rede(corujo), None)
+conferir("a outra ponta cai na formula, entao fica estimada",
+         mao._leitura_da_rede(corujo)["estimado"], True)
 mao.informar_porcentagem("job", 84.8, corujo)
 conferir("84,8% do job -> ~15.680", mao.necessario.get("job:13"), 15_680)
-conferir("com as duas, a estimativa fecha sozinha",
-         round(mao._leitura_da_rede(corujo)["base_pct"], 1), 42.0)
+fechada = mao._leitura_da_rede(corujo)
+conferir("com as duas medidas, nada mais e estimado", fechada["estimado"], False)
+conferir("e a porcentagem bate com a informada",
+         round(fechada["base_pct"], 1), 42.0)
 
 print("\nrecusa os casos em que a conta nao existe:")
 conferir("nivel maximo nao tem proximo",

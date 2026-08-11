@@ -71,6 +71,10 @@ class XPAnalyzer(ctk.CTk):
 
         self.pausado = False
         self.TETO = {"base": 150, "job": 70}   # os maximos do jogo
+        # (k, expoente) de req(n) = k * n^expoente, ajustado sobre os niveis
+        # que o proprio app mediu nos level ups. Ver NOTAS-XP.md — e uma
+        # PREVISAO, boa na faixa medida e nao verificada longe dela
+        self.CURVA = {"base": (1.6467, 3.512), "job": (2.9824, 3.318)}
         # quanto XP cada nivel pede — aprendido, nao chutado (ver _aprender_no_level_up)
         self.necessario: dict[str, int] = dict(self.cfg.get("xp_necessario") or {})
         self._nivel_anterior: dict[str, int] = {}
@@ -278,16 +282,40 @@ class XPAnalyzer(ctk.CTk):
             self._nivel_anterior[qual] = nivel
             self._pico[qual] = max(self._pico.get(qual, 0), xp)
 
+    def _previsto(self, qual: str, nivel: int) -> int | None:
+        """O tamanho do nivel pela formula, quando ele ainda nao foi medido.
+
+        Ajuste sobre os pontos que o proprio app coletou nos level ups do
+        Corujo (classe 17-21, job 12-16), com residuo maximo de 0,7%. Ver
+        NOTAS-XP.md.
+
+        ATENCAO: no nivel 114 isso e extrapolacao de 93 niveis a partir de uma
+        faixa de 5. Esta aqui pra ser CONFERIDO contra a barra do jogo, nao pra
+        ser confiado. Medida sempre ganha de prevista — por isso a formula so
+        entra quando nao ha valor aprendido.
+        """
+        k, expoente = self.CURVA.get(qual, (None, None))
+        if k is None or nivel < 1:
+            return None
+        return int(round(k * nivel ** expoente))
+
     def _leitura_da_rede(self, pacote) -> dict | None:
         """A leitura no formato da barra, mas com os numeros exatos do servidor.
 
-        So funciona depois que o tamanho do nivel foi aprendido — antes disso
-        nao da pra dizer que fracao de um nivel sao 12 milhoes de XP.
+        O tamanho do nivel vem, nesta ordem: medido (level up ou porcentagem
+        digitada) e, faltando isso, previsto pela formula. A ordem importa —
+        medida sempre ganha de prevista.
         """
+        estimado = False
+
         def porcento(qual: str, xp: int, nivel: int) -> float | None:
+            nonlocal estimado
             if nivel >= self.TETO.get(qual, 10**9):
                 return 100.0
             necessario = self.necessario.get(f"{qual}:{nivel}")
+            if not necessario:
+                necessario = self._previsto(qual, nivel)
+                estimado = True
             if not necessario:
                 return None
             return max(0.0, min(100.0, 100.0 * xp / necessario))
@@ -297,7 +325,8 @@ class XPAnalyzer(ctk.CTk):
         if base is None or job is None:
             return None
         return {"base_nivel": pacote.nivel, "base_pct": base,
-                "job_nivel": pacote.nivel_job, "job_pct": job}
+                "job_nivel": pacote.nivel_job, "job_pct": job,
+                "estimado": estimado}
 
     def _niveis_da_rede(self, leitor) -> bool:
         """Aplica o nivel que veio dos pacotes. Diz se a rede esta mandando.
@@ -351,6 +380,8 @@ class XPAnalyzer(ctk.CTk):
                                     r.taxa("job"))
         marca = "PAUSED · " if self.pausado else ""
         pacote = self.monitor.ultimo
+        if leitura.get("estimado"):
+            marca += "formula ~ · "
         if leitura["base_pct"] is None:
             # ainda sem porcentagem: o rodape mostra o que existe de verdade,
             # que e o XP exato do servidor. Curto, senao a janela corta.
