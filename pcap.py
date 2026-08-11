@@ -52,7 +52,10 @@ class _Cabecalho(Structure):
 
 
 class _Sockaddr(Structure):
-    _fields_ = [("sa_family", c_ushort), ("sa_data", c_char * 26)]
+    # sa_data tem que ser c_ubyte, NAO c_char: um array de c_char vira bytes
+    # cortado no primeiro zero, e ai um IP como 10.0.0.5 (ou qualquer porta
+    # zerada antes dele) simplesmente some
+    _fields_ = [("sa_family", c_ushort), ("sa_data", ctypes.c_ubyte * 26)]
 
 
 class _Endereco(Structure):
