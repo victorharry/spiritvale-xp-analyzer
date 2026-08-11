@@ -1,20 +1,21 @@
-"""XP Analyzer — aplicativo independente, sem nada do mercado.
+r"""XP Analyzer — sobreposicao de XP, lendo so a rede.
 
-Le a barra de XP direto da memoria do jogo e mostra, numa janelinha
-arrastavel sobre o jogo, quanto falta pro proximo nivel de classe e de job.
+Mostra, numa janelinha arrastavel sobre o jogo, o nivel e o XP de classe e de
+job, com ritmo e tempo estimado pro proximo nivel.
 
-    .venv\\Scripts\\python.exe xp_analyzer.py
+    .venv\Scripts\python.exe xp_analyzer.py
 
-Nao ha janela principal: a propria sobreposicao E o programa. Fechar nela
-fecha tudo.
+Nao ha janela principal: a propria sobreposicao E o programa.
 
-Sem OCR e sem dependencia externa: as barras sao identificadas pelo COMPORTA-
-MENTO. Entre as ~1.600 barras de UI do jogo, a de XP e a unica que so sobe e
-nunca desce, e classe e job sobem juntas quando voce mata algo. HP e MP
-oscilam, cast zera, cooldown volta ao cheio — nada disso passa no filtro.
+**Nada e lido da memoria do jogo.** Os numeros vem dos pacotes que o servidor
+ja manda pra sua maquina (ver captura.py), que trazem nivel e XP absoluto
+prontos. Nao ha o que digitar e nao ha o que adivinhar.
 
-Os numeros dos niveis voce informa uma vez (a barra guarda so o preenchimento);
-dai em diante eles sobem sozinhos, detectados pela queda brusca da barra.
+O que o servidor NAO manda e quanto XP o nivel pede. Isso e aprendido quando
+voce sobe de nivel: o maior XP visto antes da virada e o que aquele nivel
+pedia, com erro de uma morte de mob (0,25% no nivel 114 — ver NOTAS-XP.md).
+Ate o primeiro level up nao ha porcentagem nem estimativa de tempo, so nivel,
+XP e ritmo. Ficar sem estimativa e melhor que exibir uma inventada.
 """
 
 from __future__ import annotations
@@ -30,10 +31,8 @@ from tkinter import messagebox, simpledialog
 
 import customtkinter as ctk
 
-import cadeia
 import captura
 import comum
-import memoria
 import pcap
 import xp as motor_xp
 from xp_janela import JanelaXP
@@ -56,8 +55,6 @@ class XPAnalyzer(ctk.CTk):
         self.fila: queue.Queue = queue.Queue()
         self.parar = threading.Event()
 
-        # o nivel vem dos pacotes do jogo quando da; a memoria so tem o
-        # preenchimento da barra, que nao carrega numero nenhum
         self.rede_disponivel = pcap.disponivel()
         self.monitor = captura.Monitor(
             nome_processo=self.cfg.get("processo_jogo") or captura.NOME_PROCESSO,
@@ -73,11 +70,9 @@ class XPAnalyzer(ctk.CTk):
             janela_minutos=float(self.cfg.get("xp_janela_minutos", 15)))
 
         self.pausado = False
-        self.leitor = None
-        self.TETO = motor_xp.LeitorMemoria.TETO
-        # quanto XP cada nivel pede — aprendido, nao chutado (ver _aprender_necessario)
+        self.TETO = {"base": 150, "job": 70}   # os maximos do jogo
+        # quanto XP cada nivel pede — aprendido, nao chutado (ver _aprender_no_level_up)
         self.necessario: dict[str, int] = dict(self.cfg.get("xp_necessario") or {})
-        self._amostras: dict[str, dict[int, float]] = {}
         self._nivel_anterior: dict[str, int] = {}
         self._pico: dict[str, int] = {}
         self.deslocamento = 0.0     # segundos pausados, descontados do relogio
@@ -118,41 +113,6 @@ class XPAnalyzer(ctk.CTk):
         comum.salvar_config(self.cfg)
         return True
 
-    def _calibrar(self) -> bool:
-        """Chama o assistente de calibracao da barra, na primeira vez.
-
-        O programa e independente, entao ele mesmo resolve isso — nao da pra
-        mandar o usuario abrir o Scanner so pra marcar um retangulo.
-        """
-        if not messagebox.askyesno(
-                "Falta calibrar",
-                "A barra de XP ainda nao foi marcada.\n\n"
-                "E preciso uma vez so, pra confirmar qual das barras da tela e "
-                "a sua; depois disso o valor vem da memoria.\n\n"
-                "Abrir o assistente de calibracao agora?"):
-            return False
-        if getattr(sys, "frozen", False):
-            # dentro do .exe nao ha script pra chamar: roda o assistente aqui
-            import calibrar
-            regioes = calibrar.Assistente(calibrar.PASSOS_XP, "xp").executar()
-            if regioes:
-                cfg = comum.carregar_config()
-                cfg["tela"] = list(comum.tamanho_tela())
-                cfg.update(regioes)
-                comum.salvar_config(cfg)
-        else:
-            raiz = Path(__file__).resolve().parent
-            subprocess.run([sys.executable, str(raiz / "calibrar.py"),
-                            "--modo", "xp"], cwd=str(raiz))
-        self.cfg = comum.carregar_config()
-        if self.cfg.get("xp_regiao"):
-            return True
-        messagebox.showinfo("Nao calibrou",
-                            "Nada foi marcado. Rode de novo quando quiser.")
-        return False
-
-    # -- ciclo ------------------------------------------------------------
-
     def guardar_zoom(self, escala: float):
         self.cfg["xp_escala"] = escala
         comum.salvar_config(self.cfg)
@@ -168,9 +128,6 @@ class XPAnalyzer(ctk.CTk):
             return
         self.cfg[chave] = novo
         comum.salvar_config(self.cfg)
-        if self.leitor is not None:
-            self.leitor.definir_niveis(self.cfg.get("xp_nivel_base") or 1,
-                                       self.cfg.get("xp_nivel_job") or 1)
 
     def pausar(self, pausado: bool):
         """Congela a contagem sem parar de ler.
@@ -204,86 +161,40 @@ class XPAnalyzer(ctk.CTk):
         self.destroy()
 
     def _worker(self):
-        """Mesma logica do Scanner: memoria quando da, OCR de reserva."""
-        intervalo_mem = max(0.1, float(self.cfg.get("xp_intervalo_memoria", 0.25)))
-        leitor = self._ligar_memoria()
-        ate_retentar = 0
-        conhecido = None
-        recusadas = falhas = 0
+        """So rede. Nada mais e lido da memoria do jogo.
 
+        O servidor entrega nivel e XP absoluto prontos. O que ele nao entrega e
+        quanto XP o nivel pede — isso e aprendido quando voce sobe de nivel, e
+        ate la nao ha porcentagem nem estimativa de tempo.
+
+        Nao ter estimativa e melhor que inventar uma: a alternativa era adivinhar
+        qual dos ~1.700 valores parecidos na memoria e a barra de XP, e uma
+        escolha errada ali produz um numero convincente e falso.
+        """
+        sem_leitura = 0
         while not self.parar.is_set():
-            leitura = None
-            rede_manda = self._niveis_da_rede(leitor)
-            if leitor is None:
-                ate_retentar -= 1
-                if ate_retentar <= 0:
-                    leitor = self._ligar_memoria()
-                    ate_retentar = int(self.cfg.get("xp_retentar_memoria", 30))
-            self.leitor = leitor
-            if leitor is not None:
-                leitura = leitor.ler()
-                # par errado costuma ficar cravado em 0% e nunca andar: depois
-                # de um tempo assim, e melhor procurar de novo do que insistir
-                if leitura and leitura["base_pct"] == 0.0 and leitura["job_pct"] == 0.0:
-                    zerados = getattr(self, "_zerados", 0) + 1
-                    self._zerados = zerados
-                    if zerados > 120:      # ~30s a 4 leituras por segundo
-                        self._zerados = 0
-                        leitura = None
-                else:
-                    self._zerados = 0
-                if leitura is None:
-                    leitor.fechar()
-                    leitor = None
-                    ate_retentar = int(self.cfg.get("xp_retentar_memoria", 30))
-                    self.fila.put(("fonte", "memory link lost — back to OCR"))
-
-            # com as duas fontes na mao, aprende o tamanho do nivel; com o
-            # tamanho aprendido, a rede substitui a barra por completo — numero
-            # exato do servidor em vez de porcentagem estimada de pixel
-            pacote = self.monitor.ultimo if rede_manda else None
-            if pacote is not None:
-                self._aprender_no_level_up(pacote)
-                if leitura:
-                    self._aprender_necessario(pacote, leitura)
-                exata = self._leitura_da_rede(pacote)
-                if exata is not None:
-                    leitura = exata
-                elif not leitura:
-                    self.fila.put(("deteccao", self._resumo_rede()
-                                   + "learning level size…"))
-
-            if leitura and self.pausado:
-                pass          # segue lendo (o nivel continua conferido), mas
-                              # nada entra na conta enquanto estiver pausado
-            elif leitura:
-                falhas = recusadas = 0
-                conhecido = leitura["base_nivel"]
-                self.rastreador.registrar(leitura, time.time() - self.deslocamento)
-                # com a rede viva, o nivel dela e o certo: a barra so DEDUZ o
-                # level up por uma queda brusca, e deduzir erra
-                if rede_manda:
-                    pass
-                elif (leitura["base_nivel"] != self.cfg.get("xp_nivel_base")
-                        or leitura["job_nivel"] != self.cfg.get("xp_nivel_job")):
-                    self.cfg["xp_nivel_base"] = leitura["base_nivel"]
-                    self.cfg["xp_nivel_job"] = leitura["job_nivel"]
-                    comum.salvar_config(self.cfg)   # sobreviveu ao level up
-                self.fila.put(("xp", leitura))
+            pacote = self.monitor.ultimo
+            if pacote is None:
+                sem_leitura += 1
+                if sem_leitura in (10, 120):
+                    self.fila.put(("erro", sem_leitura))
             else:
-                falhas += 1
-                if conhecido is not None:
-                    recusadas += 1
-                    if recusadas >= 5:
-                        conhecido = None
-                        recusadas = 0
-                if falhas in (3, 30):
-                    self.fila.put(("erro", falhas))
+                sem_leitura = 0
+                self._aprender_no_level_up(pacote)
+                self._niveis_da_rede(None)
+                leitura = self._leitura_da_rede(pacote)
+                if leitura is None:
+                    self.fila.put(("deteccao", self._resumo_rede()
+                                   + "level size unknown until you level up"))
+                else:
+                    if not self.pausado:
+                        self.rastreador.registrar(
+                            leitura, time.time() - self.deslocamento)
+                    self.fila.put(("xp", leitura))
 
-            intervalo = intervalo_mem if leitor is not None else 5.0
-            fim = time.time() + intervalo
+            fim = time.time() + 0.5
             while time.time() < fim and not self.parar.is_set():
-                time.sleep(min(0.1, intervalo))
+                time.sleep(0.1)
 
     def _resumo_rede(self) -> str:
         """Prefixo pro rodape: prova de vida enquanto a barra nao foi achada."""
@@ -320,47 +231,6 @@ class XPAnalyzer(ctk.CTk):
                 self._pico[qual] = 0
             self._nivel_anterior[qual] = nivel
             self._pico[qual] = max(self._pico.get(qual, 0), xp)
-
-    def _aprender_necessario(self, pacote, leitura: dict) -> None:
-        """Descobre quanto XP o nivel pede, cruzando as duas fontes.
-
-        O servidor manda XP absoluto mas nao manda o tamanho do nivel; a barra
-        manda o tamanho (em porcentagem) mas nao manda numero nenhum. Juntas,
-        elas fecham a conta: necessario = xp / porcentagem.
-
-        Uso a MEDIANA de varias amostras porque a leitura da barra tem erro, e
-        uma amostra ruim sozinha estragaria a estimativa do nivel inteiro.
-        """
-        for qual, xp, nivel, pct in (
-                ("base", pacote.xp, pacote.nivel, leitura["base_pct"]),
-                ("job", pacote.xp_job, pacote.nivel_job, leitura["job_pct"])):
-            if nivel >= self.TETO.get(qual, 10**9) or pct < 5.0 or xp <= 0:
-                continue
-            chave = f"{qual}:{nivel}"
-            amostras = self._amostras.setdefault(chave, {})
-            amostras[xp] = xp / (pct / 100.0)
-            for velho in sorted(amostras)[:-12]:
-                del amostras[velho]
-            # exijo XPs DIFERENTES, nao so muitas leituras: com o XP parado,
-            # qualquer float da tela devolve um numero constante e passaria
-            if len(amostras) < 3:
-                continue
-            estimativas = sorted(amostras.values())
-            mediana = estimativas[len(estimativas) // 2]
-            # e aqui mora a validacao: so a barra CERTA mantem xp/preenchimento
-            # constante enquanto o XP sobe. Qualquer outro float da tela faz
-            # essa razao passear. Se as estimativas nao concordam, nao aprendo —
-            # ficar sem estimativa e melhor que gravar uma errada no config
-            if estimativas[-1] - estimativas[0] > mediana * 0.05:
-                continue
-            antigo = self.necessario.get(chave)
-            if antigo and abs(mediana - antigo) <= antigo * 0.02:
-                continue
-            self.necessario[chave] = int(round(mediana))
-            self.cfg["xp_necessario"] = self.necessario
-            comum.salvar_config(self.cfg)
-            self.fila.put(("fonte", f"level size learned: {chave} "
-                                    f"= {self.necessario[chave]:,} XP"))
 
     def _leitura_da_rede(self, pacote) -> dict | None:
         """A leitura no formato da barra, mas com os numeros exatos do servidor.
@@ -404,106 +274,6 @@ class XPAnalyzer(ctk.CTk):
         if leitor is not None and mudou:
             leitor.definir_niveis(pacote.nivel, pacote.nivel_job)
         return True
-
-    def _tentar_cadeia(self):
-        """Caminho gravado: resolve na hora, sem varrer e sem esperar XP."""
-        dados = cadeia.carregar(comum.RAIZ)
-        caminhos = dados.get("caminhos") or []
-        if not caminhos:
-            return None
-        try:
-            pid = memoria.achar_processo(self.cfg.get("janela_jogo") or "SpiritVale")
-            if not pid:
-                return None
-            proc = memoria.Processo(pid)
-            for c in caminhos:
-                base = cadeia.resolver(proc, c)
-                job = cadeia.resolver(proc, c["par"]) if c.get("par") else None
-                if base is None or job is None:
-                    continue
-                b, j = proc.ler_float(base), proc.ler_float(job)
-                if b is None or j is None or not (0 <= b <= 1 and 0 <= j <= 1):
-                    continue
-                leitor = motor_xp.LeitorMemoria(
-                    self.cfg.get("janela_jogo") or "SpiritVale")
-                leitor.proc, leitor.base, leitor.job = proc, base, job
-                leitor.definir_niveis(self.cfg.get("xp_nivel_base") or 1,
-                                      self.cfg.get("xp_nivel_job") or 1)
-                self.fila.put(("fonte", "found via saved pointer chain (instant)"))
-                return leitor
-            proc.fechar()
-        except Exception:
-            pass
-        return None
-
-    def _aprender_cadeia(self, leitor):
-        """Grava/refina o caminho ate as barras.
-
-        A primeira varredura devolve milhares de caminhos, quase todos
-        coincidencia desta sessao. Nas aberturas seguintes eles sao FILTRADOS
-        contra o endereco novo — e o que sobrevive a dois ou tres reinicios e
-        estavel de verdade.
-        """
-        try:
-            dados = cadeia.carregar(comum.RAIZ)
-            antigos = dados.get("caminhos") or []
-            if antigos:
-                bons = []
-                for c in antigos:
-                    if (cadeia.resolver(leitor.proc, c) == leitor.base
-                            and c.get("par")
-                            and cadeia.resolver(leitor.proc, c["par"]) == leitor.job):
-                        bons.append(c)
-                dados["caminhos"] = bons[:200]
-                dados["confirmacoes"] = int(dados.get("confirmacoes", 0)) + 1
-                cadeia.salvar(comum.RAIZ, dados)
-                self.fila.put(("fonte", f"pointer chain: {len(bons)} path(s) "
-                                        f"survived {dados['confirmacoes']} restart(s)"))
-                if bons:
-                    return
-            self.fila.put(("fonte", "mapping pointer chain (once)..."))
-            base = cadeia.varrer(leitor.proc, leitor.base, aviso=lambda t: None)
-            job = cadeia.varrer(leitor.proc, leitor.job, aviso=lambda t: None)
-            juntos = []
-            for a, b in zip(base[:200], job[:200]):
-                a = dict(a); a["par"] = b
-                juntos.append(a)
-            cadeia.salvar(comum.RAIZ, {"caminhos": juntos, "confirmacoes": 0})
-            self.fila.put(("fonte", f"pointer chain: {len(juntos)} candidate(s) "
-                                    "— reopen the game to refine"))
-        except Exception as erro:
-            self.fila.put(("fonte", f"pointer chain failed ({erro})"))
-
-    def _ligar_memoria(self):
-        atalho = self._tentar_cadeia()
-        if atalho is not None:
-            return atalho
-        """Acha as barras SEM OCR, so pelo comportamento delas.
-
-        Nao ha mais dependencia de Tesseract: XP e a unica barra que so sobe,
-        e as duas sobem juntas. Basta voce estar farmando enquanto ele mede.
-        """
-        try:
-            leitor = motor_xp.LeitorMemoria(
-                (self.cfg.get("janela_jogo") or "SpiritVale"))
-            self.fila.put(("fonte", "detecting XP bars — keep farming..."))
-            achou = leitor.localizar_por_comportamento(
-                segundos=float(self.cfg.get("xp_deteccao_segundos", 40)),
-                aviso=lambda n: self.fila.put(
-                    ("deteccao", self._resumo_rede()
-                     + f"finding bar ({n})")))
-            if achou:
-                self._aprender_cadeia(leitor)
-                leitor.definir_niveis(self.cfg.get("xp_nivel_base") or 1,
-                                      self.cfg.get("xp_nivel_job") or 1)
-                self.fila.put(("fonte", "reading from MEMORY (exact)"))
-                return leitor
-            self.fila.put(("fonte", "couldn't identify the bars — retrying"))
-        except Exception as erro:
-            self.fila.put(("fonte", f"memory unavailable ({erro})"))
-        return None
-
-    # -- interface --------------------------------------------------------
 
     def _drenar(self):
         try:

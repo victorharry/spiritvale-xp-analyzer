@@ -1,10 +1,12 @@
-"""Prova a conta que junta as duas fontes: XP exato + tamanho do nivel.
+"""Prova o aprendizado do tamanho do nivel — a unica coisa que o servidor
+nao manda pronto.
 
-O servidor manda XP absoluto mas nao manda quanto o nivel pede. A barra manda a
-porcentagem mas nao manda numero nenhum. Juntas fecham a conta — e depois disso
-a barra nao e mais necessaria.
+Sem leitura de memoria: a fonte e o proprio level up. O maior XP visto antes da
+virada e o que aquele nivel pedia.
 
-Testa sem abrir janela: so os dois metodos de calculo, num objeto de mentira.
+Os numeros do cenario vem da captura real do personagem Corujo (niveis 1 a 12),
+guardada em NOTAS-XP.md. O job vai no maximo (70) porque a leitura so fecha
+quando as DUAS pontas sao conhecidas — meia estimativa nao vira tela.
 """
 import sys
 from pathlib import Path
@@ -12,7 +14,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import comum
-import xp as motor_xp
 import xp_analyzer
 from personagem import Progresso
 
@@ -25,60 +26,61 @@ def conferir(rotulo, obtido, esperado):
     ok = obtido == esperado
     if not ok:
         falhas.append(rotulo)
-    print(f"  {'ok ' if ok else 'ERRO'} {rotulo:<46} {obtido!r}"
+    print(f"  {'ok ' if ok else 'ERRO'} {rotulo:<48} {obtido!r}"
           + ("" if ok else f"  (esperado {esperado!r})"))
 
 
 class Fingido:
-    """So o suficiente pros dois metodos rodarem, sem Tk e sem rede."""
-    TETO = motor_xp.LeitorMemoria.TETO
-    _aprender_necessario = xp_analyzer.XPAnalyzer._aprender_necessario
+    """So o suficiente pros metodos rodarem, sem Tk e sem rede."""
+    TETO = {"base": 150, "job": 70}
+    _aprender_no_level_up = xp_analyzer.XPAnalyzer._aprender_no_level_up
     _leitura_da_rede = xp_analyzer.XPAnalyzer._leitura_da_rede
 
     def __init__(self):
-        self.necessario, self._amostras, self.cfg = {}, {}, {}
+        self.necessario, self.cfg = {}, {}
+        self._nivel_anterior, self._pico = {}, {}
         self.fila = type("F", (), {"put": staticmethod(lambda *_: None)})()
 
 
+def alimentar(app, leituras):
+    for nivel, xp in leituras:
+        app._aprender_no_level_up(Progresso("Corujo", nivel, xp, 70, 0))
+
+
 app = Fingido()
-galinho = Progresso("Galinho", 114, 6_000_000, 70, 0)
 
-print("antes de aprender, a rede sozinha nao sabe a porcentagem:")
-conferir("sem tamanho de nivel, nao inventa", app._leitura_da_rede(galinho), None)
+print("antes de qualquer level up, nao ha porcentagem — e nao se inventa uma:")
+conferir("sem tamanho de nivel, devolve None",
+         app._leitura_da_rede(Progresso("Corujo", 5, 900, 70, 0)), None)
 
-print("\ncom o XP PARADO nao aprende, por mais que insista:")
-for _ in range(20):
-    app._aprender_necessario(galinho, {"base_pct": 40.0, "job_pct": 100.0})
-conferir("XP parado nao ensina nada", app.necessario.get("base:114"), None)
+print("\nsubindo de nivel, o nivel anterior fica conhecido:")
+alimentar(app, [(5, 700), (5, 1200), (5, 1568), (6, 107)])
+conferir("nivel 5 aprendido pelo pico antes da virada",
+         app.necessario.get("base:5"), 1568)
+conferir("o nivel novo ainda e desconhecido",
+         app.necessario.get("base:6"), None)
 
-print("\ncom o XP subindo e a barra acompanhando (nivel de 15M):")
-for xp in (6_000_000, 7_500_000, 9_000_000):
-    subindo = Progresso("Galinho", 114, xp, 70, 0)
-    app._aprender_necessario(subindo, {"base_pct": xp / 150_000.0,
-                                       "job_pct": 100.0})
-conferir("aprende o tamanho do nivel", app.necessario.get("base:114"),
-         15_000_000)
-
-print("\nbarra ERRADA (que nao acompanha o XP) nao ensina nada:")
-errado = Fingido()
-for xp in (6_000_000, 7_500_000, 9_000_000, 11_000_000):
-    subindo = Progresso("Galinho", 114, xp, 70, 0)
-    errado._aprender_necessario(subindo, {"base_pct": 40.0, "job_pct": 100.0})
-conferir("razao instavel e recusada", errado.necessario.get("base:114"), None)
-
-print("\nagora a rede calcula tudo sozinha:")
-leitura = app._leitura_da_rede(galinho)
-conferir("porcentagem", leitura["base_pct"], 40.0)
-conferir("nivel", leitura["base_nivel"], 114)
-conferir("job no maximo vale 100%", leitura["job_pct"], 100.0)
-dobro = app._leitura_da_rede(Progresso("Galinho", 114, 12_000_000, 70, 0))
-conferir("o dobro de XP vira o dobro da barra", dobro["base_pct"], 80.0)
-cheio = app._leitura_da_rede(Progresso("Galinho", 114, 99_000_000, 70, 0))
+print("\ncom o tamanho conhecido, a rede calcula tudo sozinha:")
+leitura = app._leitura_da_rede(Progresso("Corujo", 5, 784, 70, 0))
+conferir("metade do nivel da 50%", round(leitura["base_pct"], 1), 50.0)
+conferir("nivel vem do pacote", leitura["base_nivel"], 5)
+cheio = app._leitura_da_rede(Progresso("Corujo", 5, 99_999, 70, 0))
 conferir("XP acima do esperado nao passa de 100%", cheio["base_pct"], 100.0)
 
-print("\nnivel novo comeca sem saber de novo (cada nivel pede o seu):")
-conferir("115 ainda desconhecido",
-         app._leitura_da_rede(Progresso("Galinho", 115, 10, 70, 0)), None)
+print("\no pico zera a cada nivel, senao um nivel contaminaria o seguinte:")
+alimentar(app, [(6, 1787), (7, 148)])
+conferir("nivel 6 aprendido com o pico dele, nao com o do 5",
+         app.necessario.get("base:6"), 1787)
+
+print("\nnivel maximo nao tem 'proximo', entao vale 100%:")
+maximo = app._leitura_da_rede(Progresso("Galinho", 150, 0, 70, 0))
+conferir("classe no teto", maximo["base_pct"], 100.0)
+conferir("job no teto", maximo["job_pct"], 100.0)
+
+print("\nXP parado nao inventa level up:")
+antes = dict(app.necessario)
+alimentar(app, [(7, 148), (7, 148), (7, 148)])
+conferir("nada mudou", app.necessario, antes)
 
 print("\n" + ("FALHAS: " + ", ".join(falhas) if falhas else "TUDO OK"))
 sys.exit(1 if falhas else 0)
