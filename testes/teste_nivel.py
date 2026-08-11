@@ -109,8 +109,8 @@ corujo = Progresso("Corujo", 18, 18_293, 13, 13_297)
 mao.informar_porcentagem("base", 42.0, corujo)
 conferir("42% de 18.293 XP -> o nivel pede ~43.555",
          mao.necessario.get("base:18"), 43_555)
-conferir("a outra ponta cai na formula, entao fica estimada",
-         mao._leitura_da_rede(corujo)["estimado"], True)
+conferir("com uma so medicao nao da pra interpolar a outra ponta",
+         mao._leitura_da_rede(corujo), None)
 mao.informar_porcentagem("job", 84.8, corujo)
 conferir("84,8% do job -> ~15.680", mao.necessario.get("job:13"), 15_680)
 fechada = mao._leitura_da_rede(corujo)
