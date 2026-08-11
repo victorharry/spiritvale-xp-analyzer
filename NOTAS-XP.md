@@ -243,3 +243,60 @@ nível 70: 4,59 M contra 5,40 M). Interpolar ali é palpite educado, não mediç
 
 Isso se resolve sozinho: cada level up do Corujo mede um nível novo e a
 medição sempre vence a fórmula.
+
+## A busca por uma fórmula: 294 milhões de formas, nenhuma cabe
+
+Hipótese do Victor: quem escreve a fórmula de um jogo usa números redondos —
+3, 3.5, 10, 15 — e nós vínhamos tentando encaixar valores quebrados. Merecia
+um teste sério, e recebeu (`buscar_formula.py`).
+
+### O que tornou o teste rigoroso
+
+Cada medição virou um **intervalo**, não um ponto. A barra mostra uma casa
+decimal e **arredonda** — verificado: supondo truncamento, cinco níveis ficam
+com intervalos impossíveis; supondo arredondamento, nenhum. Ler 88,4% com
+268.064 de XP quer dizer que o nível pede entre 303.101 e 303.121. Várias
+leituras do mesmo nível se cruzam e apertam mais: o nível 33 fechou em
+**0,006%** de largura, o 25 em 0,011%, o 71 em 0,027%.
+
+Com intervalo, o teste fica exato. Para uma forma `f(n)` com escala livre,
+`lo ≤ a·f(n) ≤ hi` em todo nível significa `a ∈ [max(lo/f), min(hi/f)]`. Ou
+essa interseção existe, ou a forma está descartada — sem mínimos quadrados e
+sem tolerância escolhida a dedo.
+
+### O resultado
+
+294.777.415 formas, 167 segundos em 7 núcleos:
+
+| família | melhor folga |
+|---|---|
+| `a·(n+c)^b` | — |
+| `a·(n+c)^b·d^n` | — |
+| **`a·(n+c)^(b+e·n)`** | **1,18%** |
+| `a·(n+c)^b·m^floor(n/passo)` | — |
+
+A melhor de todas, `a·(n−5)^(2,15+0,00455·n)`, ainda **erra 1,18%** — vinte
+vezes mais largo que os intervalos que ela precisaria respeitar.
+
+Os valores também não são redondos: múltiplos de 1.000 são compatíveis com só
+4 dos 15 níveis, de 100 com 9 de 15. (Múltiplos de 20 dão "100% compatível",
+mas isso é artefato — um intervalo de 300 unidades contém 15 múltiplos de 20
+por acaso.)
+
+### Conclusão
+
+A curva provavelmente é **tabela escrita à mão**, não fórmula. Por isso o
+`_previsto` interpola entre medições em vez de avaliar uma expressão: é o
+único método cujo erro a gente sabe medir (0,1% com vizinhos a 2 níveis) e que
+melhora com uso.
+
+### Um bug que quase virou "descoberta"
+
+A primeira rodada anunciou 200 formas cabendo, incluindo `a·n²` — impossível,
+já que o nível 114 pede 1.323× o do 16 e n² só cresce 51×. Causa: no Windows o
+`multiprocessing` usa *spawn*, então cada worker reimporta o módulo. Com a
+tabela sendo preenchida dentro de `main()`, os filhos ficavam com ela vazia — e
+um laço sobre zero níveis devolve "cabe" para qualquer coisa.
+
+Fica como lembrete: um resultado bom demais merece uma checagem de sanidade
+antes da comemoração. `a·n²` agora é recusado com folga de 2557%.
