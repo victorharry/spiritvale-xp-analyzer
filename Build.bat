@@ -8,7 +8,7 @@ timeout /t 3 /nobreak >nul
 
 echo.
 echo Conferindo os testes antes de empacotar...
-for %%T in (teste_personagem teste_rede teste_nivel teste_config teste_tabela) do (
+for %%T in (teste_personagem teste_rede teste_nivel teste_config teste_tabela teste_captura) do (
   .venv\Scripts\python.exe testes\%%T.py >nul 2>&1
   if errorlevel 1 (
     echo *** %%T FALHOU. Build cancelado.

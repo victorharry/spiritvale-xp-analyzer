@@ -45,10 +45,7 @@ def abrir_captura():
         return pcap.abrir()
     if bruto.disponivel():
         return bruto.abrir()
-    raise SemCaptura(
-        "para ler o progresso e preciso capturar a rede desta maquina, e ha "
-        "dois jeitos: instalar o Npcap (https://npcap.com, uma vez so) ou "
-        "abrir o XP Analyzer como administrador.")
+    raise SemCaptura("no capture: install Npcap, or run as administrator")
 
 
 class Monitor:
@@ -65,6 +62,10 @@ class Monitor:
         self._sessao: pcap.Sessao | None = None
         self.estado = "parado"
         self.pacotes = 0
+        # ultimo aviso, pra janela poder mostrar. Antes isso so ia pro print()
+        # e o .exe nao tem console — quando a captura falhava, o usuario via
+        # apenas "waiting for the game" e nao tinha como descobrir por que.
+        self.aviso = ""
 
     # -- consulta ---------------------------------------------------------
 
@@ -103,6 +104,10 @@ class Monitor:
             except Exception:
                 pass
 
+    def _contar(self, texto: str) -> None:
+        self.aviso = texto
+        self._avisar(texto)
+
     def _publicar(self, progresso: Progresso) -> None:
         with self._trava:
             self._ultimo = progresso
@@ -113,16 +118,16 @@ class Monitor:
             sessao = abrir_captura()
         except SemCaptura as erro:
             self.estado = "sem captura"
-            self._avisar(str(erro))
+            self._contar(str(erro))
             return
         except pcap.ErroPcap as erro:
             self.estado = "falhou"
-            self._avisar(f"captura indisponivel: {erro}")
+            self._contar(f"captura indisponivel: {erro}")
             return
 
         self._sessao = sessao
         self.estado = "esperando o jogo"
-        self._avisar(f"capturando em {sessao.dispositivo}")
+        self._contar(f"capturing on {sessao.dispositivo}")
 
         remontador = litenetlib.Remontador()
         splits = fishnet.RemontadorSplit()
@@ -153,7 +158,7 @@ class Monitor:
                                 remontador, splits, cacador)
         except pcap.ErroPcap as erro:
             self.estado = "falhou"
-            self._avisar(f"captura interrompida: {erro}")
+            self._contar(f"captura interrompida: {erro}")
         finally:
             self._sessao = None
             sessao.fechar()

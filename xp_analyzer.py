@@ -30,6 +30,7 @@ from tkinter import messagebox, simpledialog
 
 import customtkinter as ctk
 
+import bruto
 import captura
 import comum
 import pcap
@@ -55,12 +56,17 @@ class XPAnalyzer(ctk.CTk):
         self.fila: queue.Queue = queue.Queue()
         self.parar = threading.Event()
 
-        self.rede_disponivel = pcap.disponivel()
+        # "ha captura" nao e o mesmo que "ha Npcap": rodando como administrador
+        # o raw socket serve igual. Enquanto isso aqui perguntava so pelo Npcap,
+        # desinstalar o driver impedia o monitor de sequer INICIAR — e ai nem
+        # elevar adiantava, porque o segundo caminho nunca era tentado.
+        self.rede_disponivel = pcap.disponivel() or bruto.disponivel()
         self.monitor = captura.Monitor(
             nome_processo=self.cfg.get("processo_jogo") or captura.NOME_PROCESSO,
             ao_avisar=lambda texto: self.fila.put(("fonte", f"network: {texto}")))
-        if self.rede_disponivel:
-            self.monitor.iniciar()
+        # inicia sempre: se nao houver caminho nenhum, quem diz isso e o proprio
+        # monitor, e a janela mostra o motivo
+        self.monitor.iniciar()
 
         if not self._pedir_niveis():
             self.destroy()
@@ -194,6 +200,18 @@ class XPAnalyzer(ctk.CTk):
             pacote = self.monitor.ultimo
             if pacote is None:
                 sem_leitura += 1
+                if sem_leitura % 6 == 0:
+                    # Sem leitura, o unico jeito de o usuario entender o que
+                    # esta havendo e ver o estado da captura. Isso so ia pro
+                    # print(), e o .exe nao tem console — a janela dizia
+                    # "waiting for the game" tanto pra jogo fechado quanto pra
+                    # captura que nunca abriu.
+                    # a contagem de pacotes e o que separa os dois modos de
+                    # falhar: zero = a captura nao esta vendo a rede; muitos =
+                    # esta vendo, mas nao achou o personagem nos pacotes
+                    self.fila.put(("deteccao",
+                                   f"{self.monitor.aviso or self.monitor.estado}"
+                                   f"  ·  {self.monitor.pacotes} pkt"))
                 if sem_leitura in (10, 120):
                     self.fila.put(("erro", sem_leitura))
             else:
