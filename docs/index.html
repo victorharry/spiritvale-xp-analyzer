@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SpiritVale — how levelling actually works</title>
+<meta name="description" content="There is no XP formula in SpiritVale. It is 161 hand-authored numbers, and 98% of the game lives in the second half.">
+<style>
+  :root {
+    --bg:      #F6F7F9;
+    --panel:   #FFFFFF;
+    --line:    #DFE3EA;
+    --ink:     #1B2130;
+    --soft:    #5A6273;
+    --faint:   #8B93A3;
+    --gold:    #9A6E15;
+    --wall:    #A33F4C;
+    --grid:    #E7EAF0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12161F; --panel: #191E29; --line: #262D3B; --ink: #E4E8F0;
+      --soft: #99A1B2; --faint: #6B7385; --gold: #D9A441; --wall: #D2707C;
+      --grid: #222836;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12161F; --panel: #191E29; --line: #262D3B; --ink: #E4E8F0;
+    --soft: #99A1B2; --faint: #6B7385; --gold: #D9A441; --wall: #D2707C;
+    --grid: #222836;
+  }
+  :root[data-theme="light"] {
+    --bg: #F6F7F9; --panel: #FFFFFF; --line: #DFE3EA; --ink: #1B2130;
+    --soft: #5A6273; --faint: #8B93A3; --gold: #9A6E15; --wall: #A33F4C;
+    --grid: #E7EAF0;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 17px; line-height: 1.65; -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1040px; margin: 0 auto; padding: 0 24px 110px; }
+  .prose { max-width: 62ch; }
+  .mono {
+    font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* the page speaks in the voice of the file it describes: mono headings */
+  header { padding: 84px 0 8px; }
+  .eyebrow {
+    font-family: "Cascadia Mono", Consolas, ui-monospace, monospace;
+    font-size: 12px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--gold); margin-bottom: 20px;
+  }
+  h1 {
+    font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", ui-monospace, monospace;
+    font-size: clamp(30px, 5.2vw, 52px); line-height: 1.12; font-weight: 700;
+    margin: 0 0 24px; letter-spacing: -.02em; text-wrap: balance; max-width: 21ch;
+  }
+  h1 em { font-style: normal; color: var(--gold); }
+  .lede { font-size: 20px; color: var(--soft); max-width: 58ch; margin: 0; }
+
+  h2 {
+    font-family: "Cascadia Mono", Consolas, ui-monospace, monospace;
+    font-size: 13px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--faint); font-weight: 600; margin: 0 0 20px;
+    padding-bottom: 12px; border-bottom: 1px solid var(--line);
+  }
+  section { margin-top: 76px; }
+  p { margin: 0 0 18px; } p:last-child { margin-bottom: 0; }
+  a { color: var(--gold); }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; padding: 24px 20px 14px; margin-bottom: 20px;
+  }
+  .card-head { display: flex; flex-wrap: wrap; gap: 8px 20px;
+               align-items: baseline; margin-bottom: 18px; }
+  .card-title { font-size: 15px; font-weight: 600; }
+  .card-note { font-family: "Cascadia Mono", Consolas, ui-monospace, monospace;
+               font-size: 12px; color: var(--faint); }
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .gridline { stroke: var(--grid); stroke-width: 1; }
+  .axis { font-family: "Cascadia Mono", Consolas, ui-monospace, monospace;
+          font-size: 10px; fill: var(--faint); font-variant-numeric: tabular-nums; }
+  .curve { fill: none; stroke: var(--gold); stroke-width: 2.25;
+           stroke-linejoin: round; stroke-linecap: round; }
+  .curve-wall { fill: none; stroke: var(--wall); stroke-width: 2.75;
+                stroke-linejoin: round; stroke-linecap: round; }
+  .mark { stroke: var(--wall); stroke-width: 1; stroke-dasharray: 3 4; }
+  .mark-label { font-family: "Cascadia Mono", Consolas, ui-monospace, monospace;
+                font-size: 11px; fill: var(--wall); font-weight: 600; }
+
+  /* the curves draw themselves when they scroll into view */
+  .draw { stroke-dasharray: var(--len); stroke-dashoffset: var(--len); }
+  .seen .draw { transition: stroke-dashoffset 1.5s cubic-bezier(.22,.61,.36,1);
+                stroke-dashoffset: 0; }
+
+  .stat { background: var(--panel); border: 1px solid var(--line);
+          border-left: 3px solid var(--gold); border-radius: 4px; padding: 32px 28px; }
+  .stat-num { font-family: "Cascadia Mono", Consolas, ui-monospace, monospace;
+              font-size: clamp(48px, 9vw, 88px); font-weight: 700; line-height: 1;
+              color: var(--gold); letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+  .stat-text { margin-top: 16px; font-size: 18px; color: var(--soft); max-width: 46ch; }
+  .split { display: flex; height: 40px; margin-top: 28px; border-radius: 3px;
+           overflow: hidden; border: 1px solid var(--line); }
+  .split > div { display: flex; align-items: center; padding: 0 12px;
+                 font-family: "Cascadia Mono", Consolas, ui-monospace, monospace;
+                 font-size: 11px; letter-spacing: .06em; white-space: nowrap; }
+  .split-a { flex: 1.9; background: var(--grid); color: var(--faint); }
+  .split-b { flex: 98.1; background: var(--gold); color: var(--bg); font-weight: 700;
+             transition: flex-grow 1.2s cubic-bezier(.22,.61,.36,1); }
+
+  /* fade-and-rise on scroll, but only for people who want motion */
+  .reveal { opacity: 0; transform: translateY(14px);
+            transition: opacity .7s ease, transform .7s cubic-bezier(.22,.61,.36,1); }
+  .reveal.seen { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal, .split-b { transition: none; }
+    .reveal { opacity: 1; transform: none; }
+    .draw, .seen .draw { stroke-dasharray: none; stroke-dashoffset: 0; transition: none; }
+  }
+
+  button.toggle {
+    font: inherit; font-size: 14px; cursor: pointer; color: var(--ink);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+    padding: 11px 18px; display: inline-flex; align-items: center; gap: 10px;
+    transition: border-color .18s ease, background .18s ease;
+  }
+  button.toggle:hover { border-color: var(--gold); }
+  button.toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  button.toggle .chev { transition: transform .25s ease; color: var(--gold); }
+  button.toggle[aria-expanded="true"] .chev { transform: rotate(90deg); }
+
+  .table-wrap { overflow: hidden; max-height: 0;
+                transition: max-height .5s cubic-bezier(.22,.61,.36,1); }
+  .table-wrap.open { max-height: 3200px; }
+  .scroll { overflow: auto; max-height: 560px; border: 1px solid var(--line);
+            border-radius: 4px; background: var(--panel); margin-top: 18px; }
+  table { border-collapse: collapse; width: 100%; min-width: 460px;
+          font-family: "Cascadia Mono", Consolas, ui-monospace, monospace;
+          font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 8px 20px; text-align: right; white-space: nowrap; }
+  th { position: sticky; top: 0; background: var(--panel); z-index: 1;
+       font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+       color: var(--faint); font-weight: 600; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  tbody tr + tr td { border-top: 1px solid var(--grid); }
+  tbody tr:hover td { background: var(--grid); }
+  tbody tr.wall td { color: var(--wall); }
+
+  ul { margin: 0; padding-left: 20px; } li { margin-bottom: 10px; }
+  li::marker { color: var(--gold); }
+  footer { margin-top: 84px; padding-top: 24px; border-top: 1px solid var(--line);
+           font-family: "Cascadia Mono", Consolas, ui-monospace, monospace;
+           font-size: 12px; color: var(--faint); line-height: 1.9; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="eyebrow">SpiritVale · levelling</div>
+    <h1>There is no formula. It's <em>161 numbers</em> typed by hand.</h1>
+    <p class="lede">The cost of every level sits in a table inside the game
+      client. No equation reproduces those values — and the shape of the curve
+      explains why.</p>
+  </header>
+
+  <section class="reveal">
+    <h2>What a level costs</h2>
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">XP required, level 1 to 150</span>
+        <span class="card-note">logarithmic — each gridline is 10&times;</span>
+      </div>
+      <svg id="curve" viewBox="0 0 900 300" role="img"
+           aria-label="XP required per level, from 40 at level 1 to 390,958,368 at level 150."></svg>
+    </div>
+    <div class="prose">
+      <p>From <span class="mono">40</span> XP at level 1 to
+        <span class="mono">390,958,368</span> at level 150. On a log scale the
+        curve looks almost straight — and that is the trap. What matters is not
+        the climb, it's <strong>how much it slows down and then speeds back
+        up</strong>.</p>
+    </div>
+  </section>
+
+  <section class="reveal">
+    <h2>The real shape</h2>
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">How much more each level costs than the last</span>
+        <span class="card-note">from level 10 onward</span>
+      </div>
+      <svg id="ratio" viewBox="0 0 900 300" role="img"
+           aria-label="Cost ratio between consecutive levels: falls from 1.25 at level 10 to a minimum of 1.047 at level 132, then climbs back to 1.15 by level 150."></svg>
+    </div>
+    <div class="prose">
+      <p>This is the chart that tells the story. The relative cost drops fast,
+        bottoms out at <strong>1.047&times; at level 132</strong> — and then
+        <strong>climbs again</strong>, reaching 1.15&times; by 150.</p>
+      <p>That <em>U</em> is a deliberate endgame wall. It is also why no simple
+        equation works: the local exponent of the curve runs from
+        <span class="mono">n<sup>2.3</sup></span> at level 5 to
+        <span class="mono">n<sup>23.5</sup></span> at 158. No single power
+        covers both.</p>
+    </div>
+  </section>
+
+  <section class="reveal">
+    <h2>Where the game actually is</h2>
+    <div class="stat">
+      <div class="stat-num" id="bigstat">98.1%</div>
+      <p class="stat-text">of all the XP in the game sits in levels 76 to 150.
+        Getting to 75 is <strong>1.9%</strong> of the road.</p>
+      <div class="split" role="img"
+           aria-label="Levels 1 to 75 are 1.9% of total XP; levels 76 to 150 are 98.1%.">
+        <div class="split-a">1.9%</div>
+        <div class="split-b" id="splitb">levels 76 – 150 · 98.1%</div>
+      </div>
+    </div>
+    <div class="prose" style="margin-top:24px">
+      <p>Reaching level 150 costs <span class="mono">4,815,446,173</span> XP in
+        total. The first 75 levels add up to
+        <span class="mono">91,392,439</span> — less than a single level in the
+        140s.</p>
+    </div>
+  </section>
+
+  <section class="reveal">
+    <h2>The whole table</h2>
+    <div class="prose" style="margin-bottom:6px">
+      <p>All 150 playable levels, straight from the client.</p>
+    </div>
+    <button class="toggle" id="toggle" aria-expanded="false" aria-controls="tablewrap">
+      <span class="chev">▶</span><span id="togglelabel">Show the full table</span>
+    </button>
+    <div class="table-wrap" id="tablewrap">
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Level</th><th>XP for this level</th><th>Total so far</th><th>vs previous</th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="reveal">
+    <h2>How this is known</h2>
+    <div class="prose">
+      <ul>
+        <li>The server sends the <strong>XP inside your current level</strong>,
+          which resets every time you level. It never sends the size of the
+          level.</li>
+        <li>The <strong>client</strong> is what draws the percentage bar. To
+          divide, it needs the denominator — so the table has to be in there.</li>
+        <li>It is: an array of 161 32-bit integers in
+          <span class="mono">sharedassets0.assets</span>. Searching for the
+          values gave 177,000 false positives; what identified it was the
+          <strong>structure</strong> — in an array indexed by level, level 22
+          sits one element after 21, and 33 sits eight after 25. Requiring the
+          hits at the right distances left exactly one candidate.</li>
+        <li>It matches <strong>18 independent measurements</strong>, taken by
+          reading the game's own progress bar and cross-referencing it with the
+          XP in the packets — a route that never touched the client files.</li>
+        <li>One table serves class <em>and</em> job: measured at the same level,
+          the two agree to <span class="mono">0.08%</span>.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    Table extracted from the client and checked against independent measurement.<br>
+    Class caps at 150, job at 70. The table covers 161 levels and saturates at 2³¹ beyond that.<br>
+    <a href="https://github.com/victorharry/spiritvale-xp-analyzer">github.com/victorharry/spiritvale-xp-analyzer</a>
+  </footer>
+
+</div>
+
+<script>
+const PER_LEVEL = [40,196,500,970,1620,2464,3513,4777,6263,7981,10007,12534,15683,19544,24193,29698,36120,43516,51939,61439,72062,83854,96858,111114,126662,143541,161788,181439,202528,225090,249218,275153,303103,333247,365747,400756,438418,478873,522253,568688,618302,671218,727553,787424,850945,918226,989378,1064507,1143718,1227117,1314864,1407330,1504900,1607946,1716827,1831894,1953495,2081968,2217650,2360872,2511963,2671247,2839047,3015681,3201466,3396716,3601743,3816857,4042364,4278572,4525844,4784816,5056234,5340867,5639499,5952924,6281947,6627379,6990037,7370743,7770326,8189616,8629450,9090666,9574106,10080615,10611042,11166236,11747051,12354341,12989023,13652368,14345896,15071245,15830142,16624379,17455812,18326346,19237936,20192578,21192310,22239204,23335366,24482938,25684090,26941022,28255960,29631160,31068902,32571490,34141312,35781216,37494524,39284872,41156140,43112432,45158048,47297468,49535336,51876460,54325792,56888432,59569604,62374676,65309128,68378576,71588736,74945448,78454672,82122456,85955016,89960368,94153872,98565376,103246448,108277536,113775176,119899208,126859944,134925408,144428464,155774096,169446576,186016640,206148704,230608064,260268096,296117472,339267296,390958368];
+const RATIO = PER_LEVEL.slice(1).map((v, i) => v / PER_LEVEL[i]);
+const WALL = 132;                    // where the relative cost stops falling
+
+const L = 54, R = 14, T = 14, B = 30, W = 900, H = 300;
+const ns = (t) => document.createElementNS("http://www.w3.org/2000/svg", t);
+
+function frame(svg, marks, xOf) {
+  marks.forEach(([y, text]) => {
+    const line = ns("line");
+    line.setAttribute("x1", L); line.setAttribute("x2", W - R);
+    line.setAttribute("y1", y); line.setAttribute("y2", y);
+    line.setAttribute("class", "gridline");
+    svg.appendChild(line);
+    const t = ns("text");
+    t.setAttribute("x", L - 10); t.setAttribute("y", y + 3.5);
+    t.setAttribute("text-anchor", "end"); t.setAttribute("class", "axis");
+    t.textContent = text;
+    svg.appendChild(t);
+  });
+  [1, 30, 60, 90, 120, 150].forEach((n) => {
+    const t = ns("text");
+    t.setAttribute("x", xOf(n)); t.setAttribute("y", H - B + 18);
+    t.setAttribute("text-anchor", "middle"); t.setAttribute("class", "axis");
+    t.textContent = n;
+    svg.appendChild(t);
+  });
+}
+
+function stroke(svg, points, cls) {
+  const p = ns("path");
+  p.setAttribute("d", "M" + points.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join("L"));
+  p.setAttribute("class", cls + " draw");
+  svg.appendChild(p);
+  // the dash length has to be the real path length or the reveal jumps
+  p.style.setProperty("--len", p.getTotalLength());
+  return p;
+}
+
+/* cost curve, log scale */
+(function () {
+  const svg = document.getElementById("curve");
+  const lo = Math.log10(PER_LEVEL[0]), hi = Math.log10(PER_LEVEL[149]);
+  const x = (n) => L + (n - 1) / 149 * (W - L - R);
+  const y = (v) => H - B - (Math.log10(v) - lo) / (hi - lo) * (H - T - B);
+  const marks = [];
+  for (let e = 2; e <= 8; e += 2) marks.push([y(Math.pow(10, e)), "10" + "²⁴⁶⁸"[e / 2 - 1]]);
+  frame(svg, marks, x);
+  stroke(svg, PER_LEVEL.map((v, i) => [x(i + 1), y(v)]), "curve");
+})();
+
+/* ratio between consecutive levels, from level 10 */
+(function () {
+  const svg = document.getElementById("ratio");
+  const from = 10, lo = 1.03, hi = 1.27;
+  const data = RATIO.slice(from - 1).map((r, i) => [from + i, r]);
+  const x = (n) => L + (n - from) / (149 - from) * (W - L - R);
+  const y = (v) => H - B - (Math.min(v, hi) - lo) / (hi - lo) * (H - T - B);
+  frame(svg, [[y(1.05), "1.05×"], [y(1.10), "1.10×"], [y(1.15), "1.15×"],
+              [y(1.20), "1.20×"], [y(1.25), "1.25×"]], x);
+  stroke(svg, data.filter(([n]) => n <= WALL).map(([n, r]) => [x(n), y(r)]), "curve");
+  stroke(svg, data.filter(([n]) => n >= WALL).map(([n, r]) => [x(n), y(r)]), "curve-wall");
+
+  const line = ns("line");
+  line.setAttribute("x1", x(WALL)); line.setAttribute("x2", x(WALL));
+  line.setAttribute("y1", T); line.setAttribute("y2", H - B);
+  line.setAttribute("class", "mark");
+  svg.appendChild(line);
+  const label = ns("text");
+  label.setAttribute("x", x(WALL) - 8); label.setAttribute("y", T + 14);
+  label.setAttribute("text-anchor", "end"); label.setAttribute("class", "mark-label");
+  label.textContent = "level 132 · the floor";
+  svg.appendChild(label);
+})();
+
+/* the full table, built once and revealed on demand */
+(function () {
+  const body = document.getElementById("rows");
+  const fmt = (v) => v.toLocaleString("en-US");
+  let running = 0;
+  const frag = document.createDocumentFragment();
+  PER_LEVEL.forEach((cost, i) => {
+    const n = i + 1;
+    const tr = document.createElement("tr");
+    if (n >= WALL) tr.className = "wall";
+    const ratio = n > 1 ? (cost / PER_LEVEL[i - 1]).toFixed(3) + "×" : "—";
+    [n, fmt(cost), fmt(running), ratio].forEach((value) => {
+      const td = document.createElement("td");
+      td.textContent = value;
+      tr.appendChild(td);
+    });
+    running += cost;
+    frag.appendChild(tr);
+  });
+  body.appendChild(frag);
+
+  const button = document.getElementById("toggle");
+  const wrap = document.getElementById("tablewrap");
+  const label = document.getElementById("togglelabel");
+  button.addEventListener("click", () => {
+    const open = wrap.classList.toggle("open");
+    button.setAttribute("aria-expanded", String(open));
+    label.textContent = open ? "Hide the table" : "Show the full table";
+  });
+})();
+
+/* reveal on scroll — and draw each curve the first time it is seen */
+(function () {
+  const targets = document.querySelectorAll(".reveal");
+  if (!("IntersectionObserver" in window)) {
+    targets.forEach((t) => t.classList.add("seen"));
+    return;
+  }
+  const watcher = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add("seen");
+      watcher.unobserve(entry.target);
+    });
+  }, { threshold: 0.15 });
+  targets.forEach((t) => watcher.observe(t));
+})();
+</script>
+</body>
+</html>

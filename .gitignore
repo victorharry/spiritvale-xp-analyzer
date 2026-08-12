@@ -13,3 +13,12 @@ dist/
 !XP Analyzer.spec
 installer/
 *.zip
+
+# measurements taken while validating the table: local data, and the table in
+# the repo is what matters
+amostras-xp.tsv
+faixas-xp.json
+
+# releases are attached to GitHub Releases, never committed
+instalador/
+*.exe
