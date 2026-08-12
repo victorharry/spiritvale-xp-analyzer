@@ -89,13 +89,17 @@ class JanelaXP(ctk.CTkToplevel):
                                  highlightthickness=0, bd=0)
         self.grafico.pack(padx=16, pady=(4, 6))
 
-        # `wraplength` e o que faz o texto quebrar em vez de sumir pelas
-        # bordas. Sem ele, uma mensagem longa (um aviso de configuracao, por
-        # exemplo) era cortada e o usuario nunca via o que precisava fazer.
-        # A largura vem do grafico, que e o elemento que define a coluna.
+        # Tres coisas precisam estar certas pro texto longo aparecer inteiro,
+        # e faltando qualquer uma ele e cortado:
+        #   wraplength  quebra a linha (sem isso, some pelas bordas)
+        #   - 2*PADDING porque o rotulo tem 16px de cada lado; usar a largura
+        #               cheia faz cada linha nascer maior que a janela
+        #   anchor="w"  o padrao do CTkLabel e centralizar, e ai o excesso
+        #               vaza dos DOIS lados de uma vez
         self.detalhe = ctk.CTkLabel(corpo, text="", font=(FONTE, 12),
                                     text_color=TEXTO_SUB, justify="left",
-                                    wraplength=int(340 * self.escala_ui))
+                                    anchor="w",
+                                    wraplength=self._largura_texto())
         self.detalhe.pack(padx=16, pady=(0, 14), anchor="w", fill="x")
 
         # arrastar por qualquer parte que nao seja o botao de fechar
@@ -116,6 +120,25 @@ class JanelaXP(ctk.CTkToplevel):
         self._largura = int(self.winfo_reqwidth() / escala)
         self._altura = int(self.winfo_reqheight() / escala)
         self.geometry(f"{self._largura}x{self._altura}")
+
+    LARGURA_BASE = 340        # a coluna do conteudo, que o grafico define
+    PADDING = 16
+
+    def _largura_texto(self) -> int:
+        """Onde a linha do rodape deve quebrar, ja descontado o padding."""
+        return int((self.LARGURA_BASE - 2 * self.PADDING) * self.escala_ui)
+
+    def rodape(self, texto: str) -> None:
+        """Escreve no rodape e ajusta a janela.
+
+        Passa por aqui todo mundo que escreve ali. Antes cada chamador fazia
+        `detalhe.configure(text=...)` direto, e so o caminho que desenhava o
+        grafico chamava _ajustar() depois — ou seja, a janela crescia pra caber
+        o texto CURTO da operacao normal, e nao crescia pro texto LONGO de
+        configuracao, que e justamente o que precisa ser lido.
+        """
+        self.detalhe.configure(text=texto)
+        self._ajustar()
 
     def _bloco(self, pai, rotulo: str, cor: str, qual: str) -> dict:
         quadro = ctk.CTkFrame(pai, fg_color=CARTAO2, corner_radius=10)
@@ -357,7 +380,7 @@ class JanelaXP(ctk.CTkToplevel):
         ctk.set_widget_scaling(nova)
         self.grafico.configure(width=int(340 * nova), height=int(155 * nova))
         # a quebra de linha acompanha o zoom, senao o texto volta a estourar
-        self.detalhe.configure(wraplength=int(340 * nova))
+        self.detalhe.configure(wraplength=self._largura_texto())
         # deixa a janela reencolher: so crescer travaria no tamanho antigo
         self._largura = self._altura = 1
         self._ajustar()
@@ -393,12 +416,12 @@ class JanelaXP(ctk.CTkToplevel):
         for bloco in self.blocos.values():
             bloco["eta"].configure(text="—", text_color=TEXTO_SUB)
             bloco["rodape"].configure(text="measuring...")
-        self.detalhe.configure(text="session restarted")
+        self.rodape("session restarted")
 
     def avisar(self, mensagem: str, detalhe: str = "") -> None:
         """Mostra um problema no lugar dos tempos, sem apagar os blocos."""
         for bloco in self.blocos.values():
             bloco["eta"].configure(text="?", text_color=LARANJA)
             bloco["rodape"].configure(text=mensagem)
-        self.detalhe.configure(text=detalhe)
+        self.rodape(detalhe)
 

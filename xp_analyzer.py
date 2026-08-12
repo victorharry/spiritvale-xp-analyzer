@@ -424,7 +424,7 @@ class XPAnalyzer(ctk.CTk):
                         "open the game and gain a little XP — your progress "
                         "only arrives when it changes")
                 elif tipo == "deteccao":
-                    self.janela.detalhe.configure(text=dados)
+                    self.janela.rodape(dados)
                 elif tipo == "fonte":
                     print(dados)          # so no console: o titulo fica limpo
         except queue.Empty:
@@ -449,11 +449,11 @@ class XPAnalyzer(ctk.CTk):
             # que e o XP exato do servidor. Curto, senao a janela corta.
             nome = pacote.nome if pacote else "?"
             xp = f"{pacote.xp:,}" if pacote else "?"
-            self.janela.detalhe.configure(text=f"{marca}{nome} · {xp} XP")
+            self.janela.rodape(f"{marca}{nome} · {xp} XP")
             return
         exato = f" · {pacote.xp:,} XP" if pacote else ""
-        self.janela.detalhe.configure(
-            text=marca + f"class +{r.ganho_total('base') or 0:.1f}%"
+        self.janela.rodape(
+            marca + f"class +{r.ganho_total('base') or 0:.1f}%"
                  f" · job +{r.ganho_total('job') or 0:.1f}%"
                  f" · {motor_xp.formatar_tempo(r.duracao())}{exato}")
         self.janela.desenhar(r.historico, r.duracao())
