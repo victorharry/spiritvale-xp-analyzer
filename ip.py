@@ -1,96 +1,90 @@
-"""Desembrulha IP e UDP — o pacote cru vira "isto veio de tal porta".
+"""Unwraps IP and UDP — a raw packet becomes "this came from port N".
 
-Porte enxuto do packet-parser do spirit-vale-tools (MIT). So o que a captura
-precisa: descartar o que nao e UDP e entregar o conteudo com as portas.
+A lean port of the packet parser in spirit-vale-tools (MIT). Only what the
+capture needs: drop anything that is not UDP and hand over the payload with
+its ports.
 
-Um detalhe que parece pedantismo mas nao e: pacotes IP fragmentados (offset
-diferente de zero) sao descartados. Um fragmento do meio nao tem cabecalho UDP;
-lido como se tivesse, ele vira um datagrama inventado com portas aleatorias.
+One detail that looks like pedantry but is not: fragmented IP packets (offset
+other than zero) are dropped. A middle fragment has no UDP header; read as if
+it did, it becomes an invented datagram with random-looking ports.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-PROTOCOLO_UDP = 17
-EXTENSOES_IPV6 = (0, 43, 44, 51, 60)
+UDP_PROTOCOL = 17
+IPV6_EXTENSIONS = (0, 43, 44, 51, 60)
 
 
 @dataclass(frozen=True)
-class Datagrama:
-    porta_origem: int
-    porta_destino: int
-    dados: bytes
+class Datagram:
+    source_port: int
+    dest_port: int
+    data: bytes
 
-    def envolve(self, portas: set[int]) -> bool:
-        return self.porta_origem in portas or self.porta_destino in portas
-
-    @property
-    def entrando(self) -> bool:
-        """Heuristica so pra rotular: pacote do servidor chega numa porta alta
-        local vinda da porta do servidor. Quem decide de verdade e o chamador,
-        que sabe quais portas sao do jogo."""
-        return True
+    def involves(self, ports: set[int]) -> bool:
+        return self.source_port in ports or self.dest_port in ports
 
 
-def analisar(pacote: bytes) -> Datagrama | None:
-    if len(pacote) < 20:
+def parse(packet: bytes) -> Datagram | None:
+    if len(packet) < 20:
         return None
-    versao = pacote[0] >> 4
-    if versao == 4:
-        return _ipv4(pacote)
-    if versao == 6:
-        return _ipv6(pacote)
+    version = packet[0] >> 4
+    if version == 4:
+        return _ipv4(packet)
+    if version == 6:
+        return _ipv6(packet)
     return None
 
 
-def _ipv4(pacote: bytes) -> Datagrama | None:
-    tamanho_cabecalho = (pacote[0] & 0x0F) * 4
-    if tamanho_cabecalho < 20 or tamanho_cabecalho > len(pacote):
+def _ipv4(packet: bytes) -> Datagram | None:
+    header_size = (packet[0] & 0x0F) * 4
+    if header_size < 20 or header_size > len(packet):
         return None
-    if pacote[9] != PROTOCOLO_UDP:
+    if packet[9] != UDP_PROTOCOL:
         return None
-    fragmento = int.from_bytes(pacote[6:8], "big")
-    if fragmento & 0x1FFF:                      # nao e o primeiro fragmento
+    fragment = int.from_bytes(packet[6:8], "big")
+    if fragment & 0x1FFF:                      # not the first fragment
         return None
-    declarado = int.from_bytes(pacote[2:4], "big")
-    if declarado < tamanho_cabecalho:
+    declared = int.from_bytes(packet[2:4], "big")
+    if declared < header_size:
         return None
-    fim = min(declarado, len(pacote))
-    return _udp(pacote, tamanho_cabecalho, fim)
+    return _udp(packet, header_size, min(declared, len(packet)))
 
 
-def _ipv6(pacote: bytes) -> Datagrama | None:
-    if len(pacote) < 40:
+def _ipv6(packet: bytes) -> Datagram | None:
+    if len(packet) < 40:
         return None
-    declarado = 40 + int.from_bytes(pacote[4:6], "big")
-    fim = min(declarado, len(pacote))
-    proximo = pacote[6]
+    declared = 40 + int.from_bytes(packet[4:6], "big")
+    end = min(declared, len(packet))
+    next_header = packet[6]
     pos = 40
-    while proximo in EXTENSOES_IPV6:
-        if pos + 2 > fim:
+    while next_header in IPV6_EXTENSIONS:
+        if pos + 2 > end:
             return None
-        atual, proximo = proximo, pacote[pos]
-        if atual == 44:                          # cabecalho de fragmento
+        current, next_header = next_header, packet[pos]
+        if current == 44:                      # fragment header
             return None
-        comprimento = (pacote[pos + 1] + 2) * 4 if atual == 51 else (pacote[pos + 1] + 1) * 8
-        pos += comprimento
-        if pos > fim:
+        size = ((packet[pos + 1] + 2) * 4 if current == 51
+                else (packet[pos + 1] + 1) * 8)
+        pos += size
+        if pos > end:
             return None
-    if proximo != PROTOCOLO_UDP:
+    if next_header != UDP_PROTOCOL:
         return None
-    return _udp(pacote, pos, fim)
+    return _udp(packet, pos, end)
 
 
-def _udp(pacote: bytes, inicio: int, fim: int) -> Datagrama | None:
-    if inicio + 8 > fim:
+def _udp(packet: bytes, start: int, end: int) -> Datagram | None:
+    if start + 8 > end:
         return None
-    comprimento = int.from_bytes(pacote[inicio + 4:inicio + 6], "big")
-    if comprimento < 8:
+    length = int.from_bytes(packet[start + 4:start + 6], "big")
+    if length < 8:
         return None
-    final = min(inicio + comprimento, fim)
-    return Datagrama(
-        porta_origem=int.from_bytes(pacote[inicio:inicio + 2], "big"),
-        porta_destino=int.from_bytes(pacote[inicio + 2:inicio + 4], "big"),
-        dados=pacote[inicio + 8:final],
+    last = min(start + length, end)
+    return Datagram(
+        source_port=int.from_bytes(packet[start:start + 2], "big"),
+        dest_port=int.from_bytes(packet[start + 2:start + 4], "big"),
+        data=packet[start + 8:last],
     )

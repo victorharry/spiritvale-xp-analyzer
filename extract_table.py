@@ -1,4 +1,4 @@
-r"""Regenera `tabela_xp.py` a partir dos arquivos do jogo.
+r"""Regenera `xp_table.py` a partir dos arquivos do jogo.
 
     .venv\Scripts\python.exe extrair_tabela.py
 
@@ -6,13 +6,13 @@ Rode isto quando um patch mudar a tabela de XP. O app avisa sozinho quando
 desconfia: ele continua medindo os niveis nos level ups e reclama se a medicao
 divergir da tabela embutida.
 
-Nao procuro por um endereco fixo — endereco muda a cada build. Procuro pela
-FORMA da tabela: uma sequencia longa de inteiros de 32 bits que so cresce,
-comeca pequena (o nivel 1 custa dezenas de XP) e chega na casa dos bilhoes.
+Nao procuro por um address fixo — address muda a cada build. Procuro pela
+FORMA da tabela: uma sequence longa de inteiros de 32 bits que so cresce,
+comeca pequena (o level 1 custa dezenas de XP) e chega na casa dos bilhoes.
 Entre gigabytes de textura e malha, praticamente nada mais tem esse feitio.
 
 A confirmacao vem depois, e e ela que importa: os valores tem que casar com o
-que foi medido lendo a barra do jogo e cruzando com o XP dos pacotes — duas
+que foi medido lendo a barra do jogo e cruzando com o XP dos packets — duas
 fontes que nao se falam.
 """
 
@@ -28,12 +28,12 @@ PASTA_PADRAO = Path(r"C:\Program Files (x86)\Steam\steamapps\common\SpiritVale")
 
 # como a tabela tem que ser pra ser aceita
 MINIMO_DE_NIVEIS = 120
-PRIMEIRO_MAXIMO = 200          # o nivel 1 custa pouco; nada de comecar em milhoes
+PRIMEIRO_MAXIMO = 200          # o level 1 custa pouco; nada de comecar em milhoes
 ULTIMO_MINIMO = 10_000_000     # e tem que chegar longe
 
 # medicoes independentes, pra conferir o que for achado (ver NOTAS-XP.md).
 # Nao sao aproximacoes: cada faixa saiu de cruzar a porcentagem da barra com o
-# XP absoluto dos pacotes, e varias leituras do mesmo nivel se cruzando.
+# XP absoluto dos packets, e varias leituras do mesmo level se cruzando.
 CONFERENCIA = {
     16: (29669, 29699), 21: (72055, 72079), 25: (126648, 126662),
     33: (303101, 303121), 71: (4525421, 4526623),
@@ -41,34 +41,34 @@ CONFERENCIA = {
 }
 
 
-def _candidatas(dados: np.ndarray):
+def _candidatas(data: np.ndarray):
     """Sequencias crescentes de uint32 com cara de tabela de XP."""
     for desloc in range(4):
-        corte = dados[desloc:]
+        corte = data[desloc:]
         corte = corte[:len(corte) // 4 * 4]
         if len(corte) < MINIMO_DE_NIVEIS * 4:
             continue
         v = corte.view(np.uint32)
         # Acha as corridas crescentes de uma vez, sem laco Python: caminhar
-        # elemento a elemento por gigabytes de asset levava horas.
+        # elemento a elemento por gigabytes de asset levava hours.
         cresce = (np.diff(v.astype(np.int64)) > 0).astype(np.int8)
         bordas = np.flatnonzero(np.diff(np.concatenate(([0], cresce, [0]))))
         inicios, fins = bordas[0::2], bordas[1::2]
         longas = np.flatnonzero(fins - inicios >= MINIMO_DE_NIVEIS - 1)
         for k in longas:
-            i, fim = int(inicios[k]), int(fins[k])       # fim inclusivo
-            if v[i] <= PRIMEIRO_MAXIMO and v[fim] >= ULTIMO_MINIMO:
-                yield desloc + i * 4, [int(x) for x in v[i:fim + 1]]
+            i, end = int(inicios[k]), int(fins[k])       # end inclusivo
+            if v[i] <= PRIMEIRO_MAXIMO and v[end] >= ULTIMO_MINIMO:
+                yield desloc + i * 4, [int(x) for x in v[i:end + 1]]
 
 
-SATURACAO = 2 ** 31        # o jogo trava o valor aqui depois do ultimo nivel
+SATURACAO = 2 ** 31        # o jogo trava o valor aqui depois do latest level
 
 
 def _aparar(tabela: list[int]) -> list[int]:
     """Corta a cauda saturada.
 
-    A partir do nivel 162 o jogo repete 2^31 — e o teto do int32 assinado, nao
-    um custo de verdade. Deixar isso na tabela faria o app dizer que o nivel
+    A partir do level 162 o jogo repete 2^31 — e o teto do int32 assinado, nao
+    um custo de verdade. Deixar isso na tabela faria o app dizer que o level
     162 pede dois bilhoes de XP, quando na verdade ele nao existe.
     """
     while tabela and tabela[-1] >= SATURACAO:
@@ -79,8 +79,8 @@ def _aparar(tabela: list[int]) -> list[int]:
 def _confere(tabela: list[int]) -> tuple[int, int]:
     """Quantos niveis conferidos caem dentro da faixa medida."""
     dentro = 0
-    for nivel, (baixo, alto) in CONFERENCIA.items():
-        if nivel <= len(tabela) and baixo <= tabela[nivel - 1] <= alto:
+    for level, (baixo, alto) in CONFERENCIA.items():
+        if level <= len(tabela) and baixo <= tabela[level - 1] <= alto:
             dentro += 1
     return dentro, len(CONFERENCIA)
 
@@ -89,11 +89,11 @@ def procurar(pasta: Path):
     """Varre os arquivos do jogo e devolve (arquivo, posicao, tabela)."""
     arquivos = []
     for raiz, _, nomes in os.walk(pasta):
-        for nome in nomes:
+        for name in nomes:
             # .resS e textura e audio cru; a tabela nao mora la
-            if nome.endswith(".resS"):
+            if name.endswith(".resS"):
                 continue
-            caminho = Path(raiz) / nome
+            caminho = Path(raiz) / name
             try:
                 if caminho.stat().st_size <= 600 * 1024 * 1024:
                     arquivos.append(caminho)
@@ -103,10 +103,10 @@ def procurar(pasta: Path):
 
     for caminho in arquivos:
         try:
-            dados = np.fromfile(caminho, dtype=np.uint8)
+            data = np.fromfile(caminho, dtype=np.uint8)
         except (OSError, MemoryError):
             continue
-        for posicao, tabela in _candidatas(dados):
+        for posicao, tabela in _candidatas(data):
             tabela = _aparar(tabela)
             acertos, total = _confere(tabela)
             if acertos == total:
@@ -122,40 +122,40 @@ def escrever(tabela: list[int], origem: str, posicao: int) -> None:
         valores = " ".join(f"{format(x, '_'):>13}," for x in grupo)
         linhas.append(f"    {valores}   # {i + 1}-{i + len(grupo)}")
 
-    Path("tabela_xp.py").write_text(f'''"""Quanto XP cada nivel pede — a tabela do jogo, nao uma estimativa.
+    Path("xp_table.py").write_text(f'''"""How much XP each level costs — the game's own table, not an estimate.
 
-GERADO por extrair_tabela.py. Nao edite a mao; rode o extrator de novo.
+GENERATED by extract_table.py. Do not edit by hand; re-run the extractor.
 
-Origem: {origem}, offset {posicao}.
+Source: {origem}, offset {posicao}.
 
-A tabela esta no cliente porque tem que estar: o servidor manda XP absoluto, e
-quem desenha a barra em porcentagem e o cliente — entao ele precisa do
-denominador.
+The table lives in the client because it has to: the server sends absolute XP,
+and it is the client that draws the percentage bar — so the client needs the
+denominator.
 
-Nao ha formula por tras destes numeros. Isso foi testado a serio: 294 milhoes
-de formas contra as medicoes, e nem restringindo a faixa lisa (niveis 15-130)
-com os valores exatos algo desce de 1,2% de erro. Sao {len(tabela)} numeros
-escritos a mao, como em Ragnarok, onde o EXP por nivel tambem e arquivo de
-dados.
+There is no formula behind these numbers. That was tested properly: 294
+million candidate shapes against the measurements, and even restricted to the
+smooth stretch (levels 15-130) with exact values, nothing gets under 1.2%
+error. These are {len(tabela)} hand-authored numbers, exactly like Ragnarok,
+where per-level EXP is also a data file.
 
-Uma tabela so serve classe e job — o que explica os dois baterem em 0,08%
-quando medidos no mesmo nivel.
+One table serves both class and job — which explains the two matching within
+0.08% when measured at the same level.
 """
 
 from __future__ import annotations
 
-# indice 0 = nivel 1
-NECESSARIO = (
+# index 0 = level 1
+XP_PER_LEVEL = (
 {chr(10).join(linhas)}
 )
 
-MAXIMO_NA_TABELA = len(NECESSARIO)
+HIGHEST_LEVEL = len(XP_PER_LEVEL)
 
 
-def xp_do_nivel(nivel: int) -> int | None:
-    """XP que o nivel pede, ou None se estiver fora da tabela."""
-    if 1 <= nivel <= MAXIMO_NA_TABELA:
-        return NECESSARIO[nivel - 1]
+def xp_for_level(level: int) -> int | None:
+    """XP the level costs, or None if it is outside the table."""
+    if 1 <= level <= HIGHEST_LEVEL:
+        return XP_PER_LEVEL[level - 1]
     return None
 ''', encoding="utf-8")
 
@@ -171,15 +171,15 @@ def main() -> int:
     caminho, posicao, tabela = procurar(pasta)
     if tabela is None:
         print("\nnao achei nenhuma tabela que case com as medicoes.")
-        print("Se o jogo mudou de formato, o filtro em _candidatas() precisa")
+        print("Se o jogo mudou de formato, o bpf_filter em _candidatas() precisa")
         print("de ajuste — ou a tabela deixou de ser um array de uint32.")
         return 1
 
     origem = os.path.relpath(caminho, pasta)
     acertos, total = _confere(tabela)
     print(f"\nachada em {origem}, offset {posicao}")
-    print(f"  {len(tabela)} niveis  |  nivel 1 = {tabela[0]:,}  |  "
-          f"nivel {len(tabela)} = {tabela[-1]:,}")
+    print(f"  {len(tabela)} niveis  |  level 1 = {tabela[0]:,}  |  "
+          f"level {len(tabela)} = {tabela[-1]:,}")
     print(f"  confere com {acertos}/{total} medicoes independentes")
     escrever(tabela, origem, posicao)
     print("\ntabela_xp.py regerado.")

@@ -1,7 +1,7 @@
 """Confere a tabela de XP extraida do jogo contra as medicoes independentes.
 
 A tabela veio dos arquivos do cliente; as medicoes vieram de ler a barra e
-cruzar com o XP dos pacotes. Sao duas fontes que nao se falam — se batem, as
+cruzar com o XP dos packets. Sao duas fontes que nao se falam — se batem, as
 duas estao certas.
 """
 import sys
@@ -9,16 +9,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import tabela_xp
+import xp_table
 
 falhas = []
 
 
-def conferir(rotulo, obtido, esperado):
+def conferir(label, obtido, esperado):
     ok = obtido == esperado
     if not ok:
-        falhas.append(rotulo)
-    print(f"  {'ok ' if ok else 'ERRO'} {rotulo:<46} {obtido!r}"
+        falhas.append(label)
+    print(f"  {'ok ' if ok else 'ERRO'} {label:<46} {obtido!r}"
           + ("" if ok else f"  (esperado {esperado!r})"))
 
 
@@ -33,19 +33,19 @@ MEDIDO = {
 }
 
 print("a tabela do jogo cai dentro de cada faixa medida:")
-for nivel, (baixo, alto) in sorted(MEDIDO.items()):
-    valor = tabela_xp.xp_do_nivel(nivel)
-    conferir(f"nivel {nivel} = {valor:,}", baixo <= valor <= alto, True)
+for level, (baixo, alto) in sorted(MEDIDO.items()):
+    valor = xp_table.xp_for_level(level)
+    conferir(f"level {level} = {valor:,}", baixo <= valor <= alto, True)
 
 print("\nsanidade da tabela:")
 conferir("cobre ate 161 (o jogo satura em 2^31 depois)",
-         tabela_xp.MAXIMO_NA_TABELA, 161)
-conferir("nivel 1 custa 40", tabela_xp.xp_do_nivel(1), 40)
+         xp_table.HIGHEST_LEVEL, 161)
+conferir("level 1 custa 40", xp_table.xp_for_level(1), 40)
 conferir("so cresce",
-         all(tabela_xp.NECESSARIO[i] < tabela_xp.NECESSARIO[i + 1]
-             for i in range(tabela_xp.MAXIMO_NA_TABELA - 1)), True)
-conferir("nivel 0 nao existe", tabela_xp.xp_do_nivel(0), None)
-conferir("acima da tabela devolve None", tabela_xp.xp_do_nivel(200), None)
+         all(xp_table.XP_PER_LEVEL[i] < xp_table.XP_PER_LEVEL[i + 1]
+             for i in range(xp_table.HIGHEST_LEVEL - 1)), True)
+conferir("level 0 nao existe", xp_table.xp_for_level(0), None)
+conferir("acima da tabela devolve None", xp_table.xp_for_level(200), None)
 
 print("\n" + ("FALHAS: " + ", ".join(falhas) if falhas else "TUDO OK"))
 sys.exit(1 if falhas else 0)

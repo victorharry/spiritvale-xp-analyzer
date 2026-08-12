@@ -1,223 +1,226 @@
-"""Camada FishNet — e aqui que a gente cava atras do CharacterData.
+"""The FishNet layer — where we dig for the CharacterData.
 
-Duas coisas acontecem neste arquivo.
+Two things happen in this file.
 
-**Remontagem de split.** Quando uma mensagem do FishNet nao cabe num pacote so,
-ela vai como `split`: varios pedacos com o mesmo tick, numerados. O
-CharacterData e grande o bastante pra cair nesse caminho com frequencia.
+**Split reassembly.** When a FishNet message does not fit in one packet it
+goes out as a `split`: several chunks sharing a tick, numbered. CharacterData
+is big enough to take that path often.
 
-**A cacada.** Aqui eu tomei um atalho deliberado, e vale explicar por que.
+**The hunt.** Here I took a deliberate shortcut, and it is worth saying why.
 
-O decodificador completo deles resolve cada RPC pelo nome: le o mapa de 4 mil
-linhas de RPCs, acompanha os `objectSpawn` pra saber qual "link id" virou qual
-metodo, e so entao sabe onde comeca o conteudo do CharacterCallback_T. E o
-jeito certo se voce quer ler o protocolo inteiro. Nos queremos UM campo.
+Their full decoder resolves every RPC by name: it reads a four-thousand-line
+RPC map, follows `objectSpawn` messages to learn which "link id" became which
+method, and only then knows where a CharacterCallback_T payload begins. That
+is the right approach if you want to read the whole protocol. We want ONE
+field.
 
-Entao, em vez de resolver o protocolo, a gente tenta decodificar CharacterData
-a partir de cada posicao plausivel do pacote. O que segura a mentira e o
-proprio decodificador: pra um trecho passar, ele tem que conter seis strings
-utf-8 validas com tamanho dentro do limite, e terminar em nivel 1..150 e job
-1..70. Lixo nao passa nesse funil — e o que passar por acidente ainda tem que
-repetir o mesmo nome de personagem pra ser levado a serio (ver `Cacador`).
+So instead of resolving the protocol, we try to decode CharacterData starting
+at every plausible offset in the packet. What keeps that honest is the decoder
+itself: to pass, a slice must contain six valid utf-8 strings within their
+length limits, a UID shaped like a GUID, and end in a class level of 1..150
+and a job level of 1..70. Garbage does not survive that funnel — and whatever
+survives by accident still has to repeat the same character name to be taken
+seriously (see `Hunter`).
 
-O custo disso e o teto: se um dia precisarmos de outros campos, ai vale portar
-a resolucao de RPC de verdade.
+The cost is the ceiling: if we ever need other fields, porting the real RPC
+resolution becomes worth it.
 """
 
 from __future__ import annotations
 
-import personagem
-from personagem import Progresso
+import character
+from character import Progress
 
-PACOTE_SPLIT = 2
-CABECALHO = 6                # 4 de tick + 2 de id do pacote
+SPLIT_PACKET = 2
+HEADER = 6                # 4 de tick + 2 de id do packet
 
-PEDACOS_MAXIMOS = 1024
-BYTES_MAXIMOS = 1024 * 1024
-SPLITS_SIMULTANEOS = 32
+MAX_CHUNKS = 1024
+MAX_BYTES = 1024 * 1024
+MAX_OPEN_SPLITS = 32
 
-# tamanho minimo pra valer a tentativa: dois UIDs, dois textos e o nome ja
+# size minimo pra valer a tentativa: dois UIDs, dois textos e o name ja
 # passam disso com folga
-MINIMO_PLAUSIVEL = 100
-TAMANHO_MAXIMO_UID = 80
+MIN_PLAUSIBLE = 100
+MAX_UID_LENGTH = 80
 
 
-def _packed(dados: bytes, pos: int) -> tuple[int, int] | None:
-    """Le um inteiro packed com zigzag. Devolve (valor, proxima posicao)."""
-    bruto = 0
-    deslocamento = 0
+def _read_packed(data: bytes, pos: int) -> tuple[int, int] | None:
+    """Reads a zigzag packed integer. Returns (value, next position)."""
+    rawsocket = 0
+    shift = 0
     for _ in range(10):
-        if pos >= len(dados):
+        if pos >= len(data):
             return None
-        byte = dados[pos]
+        byte = data[pos]
         pos += 1
-        bruto |= (byte & 0x7F) << deslocamento
+        rawsocket |= (byte & 0x7F) << shift
         if not byte & 0x80:
-            return ((bruto >> 1) ^ -(bruto & 1), pos)
-        deslocamento += 7
+            return ((rawsocket >> 1) ^ -(rawsocket & 1), pos)
+        shift += 7
     return None
 
 
 # -- remontagem de split --------------------------------------------------
 
-class RemontadorSplit:
-    """Junta os pedacos de uma mensagem grande do FishNet."""
+class SplitReassembler:
+    """Junta os chunks de uma message grande do FishNet."""
 
     def __init__(self):
-        self._pedacos: dict[tuple, dict[int, bytes]] = {}
-        self._esperados: dict[tuple, int] = {}
-        self._relogio = 0
-        self._visto: dict[tuple, int] = {}
+        self._chunks: dict[tuple, dict[int, bytes]] = {}
+        self._expected: dict[tuple, int] = {}
+        self._clock = 0
+        self._seen: dict[tuple, int] = {}
 
-    def alimentar(self, conteudo: bytes, canal: int, sequencia: int | None) -> list[bytes]:
-        """Devolve mensagens do FishNet prontas pra leitura.
+    def feed(self, payload: bytes, channel: int, sequence: int | None) -> list[bytes]:
+        """Returns FishNet messages ready to be read.
 
-        Conteudo que nao e split passa direto — a maioria dos pacotes.
+        Anything that is not a split passes straight through, which is most
+        packets.
         """
-        if len(conteudo) < CABECALHO:
+        if len(payload) < HEADER:
             return []
-        if int.from_bytes(conteudo[4:6], "little") != PACOTE_SPLIT:
-            return [conteudo]
+        if int.from_bytes(payload[4:6], "little") != SPLIT_PACKET:
+            return [payload]
 
-        lido = _packed(conteudo, CABECALHO)
+        lido = _read_packed(payload, HEADER)
         if lido is None:
             return []
-        quantos, pos = lido
-        if quantos < 1 or quantos > PEDACOS_MAXIMOS:
+        count, pos = lido
+        if count < 1 or count > MAX_CHUNKS:
             return []
 
-        tick = int.from_bytes(conteudo[0:4], "little")
-        chave = (canal, tick, quantos)
-        self._relogio += 1
-        self._visto[chave] = self._relogio
+        tick = int.from_bytes(payload[0:4], "little")
+        key = (channel, tick, count)
+        self._clock += 1
+        self._seen[key] = self._clock
 
-        pedacos = self._pedacos.setdefault(chave, {})
-        self._esperados[chave] = quantos
-        # a captura ve a ordem do fio, nao a da entrega: a sequencia do
-        # LiteNetLib e o unico jeito de recolar na ordem certa
-        ordem = sequencia if sequencia is not None else len(pedacos)
-        pedacos[ordem] = conteudo[pos:]
+        chunks = self._chunks.setdefault(key, {})
+        self._expected[key] = count
+        # capture sees wire order, not delivery order: the LiteNetLib
+        # sequence is the only way to glue the chunks back correctly
+        ordem = sequence if sequence is not None else len(chunks)
+        chunks[ordem] = payload[pos:]
 
-        if sum(len(p) for p in pedacos.values()) > BYTES_MAXIMOS:
-            self._descartar(chave)
+        if sum(len(p) for p in chunks.values()) > MAX_BYTES:
+            self._drop(key)
             return []
-        if len(pedacos) < quantos:
-            self._podar()
+        if len(chunks) < count:
+            self._prune()
             return []
 
-        self._descartar(chave)
-        return [b"".join(pedacos[k] for k in _ordem_circular(pedacos))]
+        self._drop(key)
+        return [b"".join(chunks[k] for k in _wraparound_order(chunks))]
 
-    def _descartar(self, chave) -> None:
-        self._pedacos.pop(chave, None)
-        self._esperados.pop(chave, None)
-        self._visto.pop(chave, None)
+    def _drop(self, key) -> None:
+        self._chunks.pop(key, None)
+        self._expected.pop(key, None)
+        self._seen.pop(key, None)
 
-    def _podar(self) -> None:
-        while len(self._pedacos) > SPLITS_SIMULTANEOS:
-            self._descartar(min(self._visto, key=self._visto.get))
+    def _prune(self) -> None:
+        while len(self._chunks) > MAX_OPEN_SPLITS:
+            self._drop(min(self._seen, key=self._seen.get))
 
 
-def _ordem_circular(pedacos: dict[int, bytes]) -> list[int]:
+def _wraparound_order(chunks: dict[int, bytes]) -> list[int]:
     """Ordena as sequencias sabendo que elas dao a volta em 65535."""
-    chaves = sorted(pedacos)
-    if chaves and max(chaves) - min(chaves) > 0x8000:
-        return sorted(chaves, key=lambda k: k + 0x10000 if k < 0x8000 else k)
-    return chaves
+    keys = sorted(chunks)
+    if keys and max(keys) - min(keys) > 0x8000:
+        return sorted(keys, key=lambda k: k + 0x10000 if k < 0x8000 else k)
+    return keys
 
 
 # -- a cacada -------------------------------------------------------------
 
-def _inicio_plausivel(dados: bytes, i: int) -> bool:
+def _plausible_start(data: bytes, i: int) -> bool:
     """Peneira barata antes de gastar um decodificador inteiro na posicao.
 
-    CharacterData comeca com o marcador de objeto (0 = veio preenchido) e logo
+    CharacterData comeca com o marcador de object_marker (0 = veio preenchido) e logo
     depois o UID, uma string curta e imprimivel. Quase todo lixo morre aqui.
     """
-    if dados[i] != 0:
+    if data[i] != 0:
         return False
-    if i + 2 > len(dados):
+    if i + 2 > len(data):
         return False
-    bruto = dados[i + 1]
-    if bruto & 0x80:                             # UID nunca precisa de 2 bytes
+    rawsocket = data[i + 1]
+    if rawsocket & 0x80:                             # UID nunca precisa de 2 bytes
         return False
-    tamanho = (bruto >> 1) ^ -(bruto & 1)
-    if tamanho == -1:
+    size = (rawsocket >> 1) ^ -(rawsocket & 1)
+    if size == -1:
         return True                              # UID nulo e possivel
-    if tamanho < 1 or tamanho > TAMANHO_MAXIMO_UID:
+    if size < 1 or size > MAX_UID_LENGTH:
         return False
-    if i + 2 + tamanho > len(dados):
+    if i + 2 + size > len(data):
         return False
-    return all(32 <= b < 127 for b in dados[i + 2:i + 2 + tamanho])
+    return all(32 <= b < 127 for b in data[i + 2:i + 2 + size])
 
 
-def cacar(dados: bytes, nome_esperado: str | None = None) -> list[Progresso]:
-    """Todo CharacterData que couber neste conteudo."""
-    achados: list[Progresso] = []
-    limite = len(dados) - MINIMO_PLAUSIVEL
-    for i in range(max(0, limite) + 1):
-        if not _inicio_plausivel(dados, i):
+def hunt(data: bytes, expected_name: str | None = None) -> list[Progress]:
+    """Every CharacterData that fits in this payload."""
+    found: list[Progress] = []
+    limit = len(data) - MIN_PLAUSIBLE
+    for i in range(max(0, limit) + 1):
+        if not _plausible_start(data, i):
             continue
-        progresso = personagem.decodificar(dados[i:], com_tipo_de_update=False,
-                                           exigir_guid=True)
-        if progresso is None:
+        progress = character.decode(data[i:], with_update_type=False,
+                                           require_guid=True)
+        if progress is None:
             continue
-        if nome_esperado is not None and progresso.nome != nome_esperado:
+        if expected_name is not None and progress.name != expected_name:
             continue
-        if not _nome_aceitavel(progresso.nome):
+        if not _name_is_sane(progress.name):
             continue
-        achados.append(progresso)
-    return achados
+        found.append(progress)
+    return found
 
 
-def _nome_aceitavel(nome: str) -> bool:
-    if not nome or nome == "?" or not all(c.isprintable() for c in nome):
+def _name_is_sane(name: str) -> bool:
+    if not name or name == "?" or not all(c.isprintable() for c in name):
         return False
-    # nome com cara de GUID e leitura deslocada, nao personagem
-    return not personagem.GUID.match(nome)
+    # a name shaped like a GUID means a shifted read, not a character
+    return not character.GUID.match(name)
 
 
-class Cacador:
-    """A cacada com memoria — e o que separa achado de coincidencia.
+class Hunter:
+    """The hunt, with memory — what separates a find from a coincidence.
 
-    Sozinho, um acerto e so "esses bytes couberam no formato". Mas o nome do
-    personagem nao muda de um pacote pro outro: quando o mesmo nome aparece
-    duas vezes, ele vira o esperado e dali em diante todo candidato com nome
-    diferente e descartado sem cerimonia.
+    On its own, a hit only says "these bytes fit the format". But a character
+    name does not change from one packet to the next: once the same name shows
+    up twice it becomes the expected one, and from then on any candidate with
+    a different name is dropped without ceremony.
     """
 
-    CONFIRMACOES = 2
-    TROCA = 4
+    CONFIRMATIONS = 2
+    SWITCH_AFTER = 4
 
     def __init__(self):
-        self.nome: str | None = None
-        self._contagem: dict[str, int] = {}
+        self.name: str | None = None
+        self._tally: dict[str, int] = {}
 
-    def alimentar(self, dados: bytes) -> Progresso | None:
-        """O progresso mais confiavel deste conteudo, se houver."""
-        candidatos = cacar(dados)
-        if not candidatos:
+    def feed(self, data: bytes) -> Progress | None:
+        """O progress mais reliable deste payload, se houver."""
+        candidates = hunt(data)
+        if not candidates:
             return None
 
-        for candidato in candidatos:
-            if candidato.nome == self.nome:
-                return candidato
+        for candidate in candidates:
+            if candidate.name == self.name:
+                return candidate
 
-        # nenhum e o personagem travado. Pode ser so a lista de personagens da
+        # nenhum e o character travado. Pode ser so a list_of de personagens da
         # tela de selecao passando (cada um aparece uma ou duas vezes) ou uma
         # troca de verdade — por isso trocar custa mais confirmacoes do que
         # travar da primeira vez
-        limite = self.TROCA if self.nome is not None else self.CONFIRMACOES
-        for candidato in candidatos:
-            contagem = self._contagem.get(candidato.nome, 0) + 1
-            self._contagem[candidato.nome] = contagem
-            if contagem >= limite:
-                self.nome = candidato.nome
-                self._contagem.clear()
-                return candidato
+        limit = self.SWITCH_AFTER if self.name is not None else self.CONFIRMATIONS
+        for candidate in candidates:
+            tally = self._tally.get(candidate.name, 0) + 1
+            self._tally[candidate.name] = tally
+            if tally >= limit:
+                self.name = candidate.name
+                self._tally.clear()
+                return candidate
         return None
 
-    def esquecer(self) -> None:
-        """Troca de personagem: o nome travado deixa de valer."""
-        self.nome = None
-        self._contagem.clear()
+    def forget(self) -> None:
+        """Character switch: the locked name stops being valid."""
+        self.name = None
+        self._tally.clear()

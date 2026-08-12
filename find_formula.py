@@ -11,11 +11,11 @@ O que torna isso rigoroso e barato ao mesmo tempo:
 **Cada medicao e um INTERVALO, nao um ponto.** A barra do jogo mostra uma casa
 decimal e arredonda — verificado: supondo truncamento, cinco niveis ficariam com
 intervalos impossiveis; supondo arredondamento, nenhum. Ler 88,4% com 268.064
-de XP significa que o nivel pede entre 303.101 e 303.121, e nada fora disso.
-Varias leituras do mesmo nivel se cruzam e apertam mais ainda.
+de XP significa que o level pede entre 303.101 e 303.121, e nada fora disso.
+Varias leituras do mesmo level se cruzam e apertam mais ainda.
 
 **Com o intervalo, o teste vira exato.** Para uma forma `f(n)` com um fator de
-escala livre, `lo <= a*f(n) <= hi` em todo nivel quer dizer que `a` tem que
+escala livre, `lo <= a*f(n) <= hi` em todo level quer dizer que `a` tem que
 estar em `[max(lo/f), min(hi/f)]`. Ou essa intersecao existe, ou a forma esta
 descartada — sem minimos quadrados, sem tolerancia escolhida a dedo.
 
@@ -31,41 +31,41 @@ import os
 import time
 from pathlib import Path
 
-RAIZ = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent
 
 
 def montar_faixas() -> dict[int, tuple[float, float]]:
-    """Intervalo de cada nivel, cruzando todas as amostras registradas."""
+    """Intervalo de cada level, cruzando todas as amostras registradas."""
     amostras = []
-    for pasta in (RAIZ, Path(os.environ.get("APPDATA", "")) / "XP Analyzer"):
+    for pasta in (ROOT, Path(os.environ.get("APPDATA", "")) / "XP Analyzer"):
         caminho = pasta / "amostras-xp.tsv"
         if not caminho.exists():
             continue
         for linha in caminho.read_text(encoding="utf-8").splitlines():
-            partes = linha.split("\t")
-            if len(partes) < 4:
+            parts = linha.split("\t")
+            if len(parts) < 4:
                 continue
-            _, nivel, xp, pct = partes[:4]
+            _, level, xp, pct = parts[:4]
             if float(pct) >= 5.0 and int(xp) > 0:
-                amostras.append((int(nivel), int(xp), float(pct)))
+                amostras.append((int(level), int(xp), float(pct)))
 
     faixas: dict[int, tuple[float, float]] = {}
-    for nivel, xp, pct in amostras:
+    for level, xp, pct in amostras:
         baixo, alto = xp / ((pct + 0.05) / 100), xp / ((pct - 0.05) / 100)
-        if nivel in faixas:
-            baixo = max(baixo, faixas[nivel][0])
-            alto = min(alto, faixas[nivel][1])
-        faixas[nivel] = (baixo, alto)
+        if level in faixas:
+            baixo = max(baixo, faixas[level][0])
+            alto = min(alto, faixas[level][1])
+        faixas[level] = (baixo, alto)
 
     # Onde as amostras se contradizem, o culpado nao e a medicao: e o intervalo
-    # entre ler a porcentagem na tela e o pacote que trouxe o XP. Ali eu afrouxo
-    # pra uniao, em vez de escolher uma amostra e fingir que as outras nao
+    # entre ler a porcentagem na tela e o packet que trouxe o XP. Ali eu afrouxo
+    # pra uniao, em vez de pick uma amostra e fingir que as outras nao
     # existem — a incerteza e real e tem que aparecer na conta.
-    for nivel, (baixo, alto) in list(faixas.items()):
+    for level, (baixo, alto) in list(faixas.items()):
         if baixo > alto:
             todas = [(xp / ((p + 0.05) / 100), xp / ((p - 0.05) / 100))
-                     for n, xp, p in amostras if n == nivel]
-            faixas[nivel] = (min(b for b, _ in todas), max(a for _, a in todas))
+                     for n, xp, p in amostras if n == level]
+            faixas[level] = (min(b for b, _ in todas), max(a for _, a in todas))
     return faixas
 
 
@@ -82,7 +82,7 @@ def folga(forma) -> float:
     """Quanto FALTA pra forma caber em todos os intervalos, em porcentagem.
 
     Zero significa que existe um fator de escala que satisfaz todos ao mesmo
-    tempo. Acima de zero, o numero diz o tamanho do problema — util pra
+    tempo. Acima de zero, o numero diz o size do problema — util pra
     ranquear as quase-solucoes em vez de so dizer "nao".
     """
     menor_teto = float("inf")
@@ -132,21 +132,21 @@ def _avaliar(familia, v):
 def _lote(tarefa):
     """Um pedaco do espaco, avaliado num nucleo."""
     familia, valores = tarefa
-    achados = []
+    found = []
     for v in valores:
         try:
-            forma, nome = _avaliar(familia, v)
+            forma, name = _avaliar(familia, v)
             f = folga(forma)
         except (OverflowError, ValueError, ZeroDivisionError):
             continue
         if f < 2.0:
-            achados.append((f, nome, familia))
-    achados.sort()
-    return achados[:30]
+            found.append((f, name, familia))
+    found.sort()
+    return found[:30]
 
 
 def tarefas():
-    """Os lotes. Grade fina nos parametros que exigem forca bruta mesmo."""
+    """Os lotes. Grade fina nos parametros que exigem forca raw_value mesmo."""
     # potencia deslocada — a familia que ja apontou pra (n-1,5)^3
     cs = [x / 100 for x in range(-1000, 1001)]        # -10 a 10, de 0,01
     bs = [x / 1000 for x in range(2000, 6001)]        # 2 a 6, de 0,001
@@ -162,7 +162,7 @@ def tarefas():
         yield ("pot_exp", [(c, b, d) for c in cs2[i:i + 5]
                            for b in bs2 for d in ds])
 
-    # expoente que cresce com o nivel
+    # expoente que cresce com o level
     es = [x / 100000 for x in range(0, 1001)]
     for i in range(0, len(cs2), 5):
         yield ("exp_var", [(c, b, e) for c in cs2[i:i + 5]
@@ -179,7 +179,7 @@ def main() -> None:
     if not NIVEIS:
         print("nenhuma amostra registrada ainda (amostras-xp.tsv)")
         return
-    (RAIZ / "faixas-xp.json").write_text(
+    (ROOT / "faixas-xp.json").write_text(
         json.dumps({str(k): v for k, v in FAIXAS.items()}, indent=1),
         encoding="utf-8")
 
@@ -193,33 +193,33 @@ def main() -> None:
                        key=lambda n: (FAIXAS[n][1] - FAIXAS[n][0]) / FAIXAS[n][0])
     for n in apertados[:3]:
         lo, hi = FAIXAS[n]
-        print(f"      nivel {n:>3}: {lo:>12,.0f} a {hi:>12,.0f}"
+        print(f"      level {n:>3}: {lo:>12,.0f} a {hi:>12,.0f}"
               f"   ({(hi - lo) / lo * 100:.3f}%)")
     print(f"\n  {total:,} formas em {len(lotes)} lotes, em {nucleos} nucleos")
     print("  criterio: caber em TODOS os intervalos ao mesmo tempo\n")
 
-    inicio = time.time()
-    achados = []
+    start = time.time()
+    found = []
     with mp.Pool(nucleos) as pool:
         for i, resultado in enumerate(pool.imap_unordered(_lote, lotes), 1):
-            achados.extend(resultado)
-            achados.sort()
-            achados = achados[:200]
+            found.extend(resultado)
+            found.sort()
+            found = found[:200]
             if i % 5 == 0 or i == len(lotes):
-                melhor = achados[0][0] if achados else float("inf")
-                print(f"  lote {i}/{len(lotes)}  ({time.time() - inicio:5.0f}s)"
+                melhor = found[0][0] if found else float("inf")
+                print(f"  lote {i}/{len(lotes)}  ({time.time() - start:5.0f}s)"
                       f"   falta pra caber: {melhor:.4f}%", flush=True)
 
-    print(f"\nterminou em {time.time() - inicio:.0f}s\n")
-    cabem = [a for a in achados if a[0] == 0.0]
+    print(f"\nterminou em {time.time() - start:.0f}s\n")
+    cabem = [a for a in found if a[0] == 0.0]
     if cabem:
         print(f"CABE EM TODOS OS INTERVALOS — {len(cabem)} forma(s):")
-        for _, nome, familia in cabem[:25]:
-            print(f"  {nome}")
+        for _, name, familia in cabem[:25]:
+            print(f"  {name}")
     else:
         print("Nenhuma forma cabe em todos os intervalos. As mais proximas:")
-        for f, nome, familia in achados[:25]:
-            print(f"  falta {f:7.4f}%  [{familia:>8}]  {nome}")
+        for f, name, familia in found[:25]:
+            print(f"  falta {f:7.4f}%  [{familia:>8}]  {name}")
         print("\nQuanto menor a folga, mais perto. Uma folga que nao chega a")
         print("zero com grade fina e evidencia de que a curva nao e uma formula")
         print("unica — provavelmente e tabela. Ver NOTAS-XP.md.")

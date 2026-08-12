@@ -1,165 +1,165 @@
-"""Camada LiteNetLib — o envelope que o jogo usa dentro do UDP.
+"""The LiteNetLib layer — the envelope the game uses inside UDP.
 
-Porte das partes que interessam do spirit-vale-tools (MIT). Sao tres formatos
-empilhados e a gente precisa dos tres pra chegar no conteudo:
+A port of the parts that matter from spirit-vale-tools (MIT). Three formats
+are stacked and all three have to be unwrapped to reach the payload:
 
     UDP -> LiteNetLib -> FishNet -> CharacterData
 
-O LiteNetLib faz duas coisas que quebram um leitor ingenuo:
+LiteNetLib does two things that break a naive reader:
 
-  * **merge** — varias mensagens pequenas viajam num datagrama so, cada uma
-    precedida do proprio tamanho. Ler so a primeira perde o resto.
-  * **fragmento** — uma mensagem grande e picada em varios datagramas. E
-    exatamente o caso do CharacterData, que e gordo. Sem remontar, a gente ve
-    metade do personagem e nunca decodifica nada.
+  * **merge** — several small messages travel in one datagram, each prefixed
+    with its own size. Reading only the first one loses the rest.
+  * **fragment** — a large message is sliced across several datagrams. That is
+    exactly what happens to CharacterData, which is fat. Without reassembly
+    you see half a character and never decode anything.
 
-Aqui nada levanta excecao por pacote estranho: captura passiva ve barulho, ve
-retransmissao, ve pacote cortado. O jeito certo de reagir e ignorar aquele
-pacote, nao derrubar a leitura.
+Nothing here raises on a strange packet. Passive capture sees noise, sees
+retransmissions, sees truncated frames. The right reaction is to ignore that
+packet, not to bring the reading down.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-MASCARA_TIPO = 0x1F
-MASCARA_FRAGMENTADO = 0x80
-TIPO_UNIDO = 12
-PROFUNDIDADE_MAXIMA = 8
+KIND_MASK = 0x1F
+FRAGMENTED_MASK = 0x80
+MERGED_KIND = 12
+MAX_DEPTH = 8
 
-NOMES = ("unreliable", "channeled", "ack", "ping", "pong", "connectRequest",
+KIND_NAMES = ("unreliable", "channeled", "ack", "ping", "pong", "connectRequest",
          "connectAccept", "disconnect", "unconnectedMessage", "mtuCheck",
          "mtuOk", "broadcast", "merged", "shutdownOk", "peerNotFound",
          "invalidProtocol", "natMessage", "empty")
 
-# um fragmento incompleto nao pode ficar preso pra sempre
-FRAGMENTOS_MAXIMOS = 64
-PARTES_MAXIMAS = 1024
-BYTES_MAXIMOS = 4 * 1024 * 1024
+# an incomplete fragment must not be held forever
+MAX_PENDING_FRAGMENTS = 64
+MAX_PARTS = 1024
+MAX_BYTES = 4 * 1024 * 1024
 
 
 @dataclass(frozen=True)
-class Pacote:
-    tipo: str
-    canal: int | None
-    sequencia: int | None
-    fragmento: tuple[int, int, int] | None   # (id, parte, total)
-    dados: bytes
+class Packet:
+    kind: str
+    channel: int | None
+    sequence: int | None
+    fragment: tuple[int, int, int] | None   # (id, part, total)
+    data: bytes
 
     @property
-    def confiavel(self) -> bool:
-        return self.tipo == "channeled"
+    def reliable(self) -> bool:
+        return self.kind == "channeled"
 
     @property
-    def carrega_conteudo(self) -> bool:
-        return self.tipo in ("unreliable", "channeled")
+    def carries_payload(self) -> bool:
+        return self.kind in ("unreliable", "channeled")
 
 
-def decodificar(datagrama: bytes) -> list[Pacote]:
-    """Todos os pacotes de um datagrama, ja abrindo os merges."""
-    saida: list[Pacote] = []
-    _ler(datagrama, 0, saida)
-    return saida
+def decode(datagram: bytes) -> list[Packet]:
+    """Every packet in a datagram, with merges already opened up."""
+    out: list[Packet] = []
+    _read(datagram, 0, out)
+    return out
 
 
-def _ler(dados: bytes, profundidade: int, saida: list[Pacote]) -> None:
-    if not dados or profundidade > PROFUNDIDADE_MAXIMA:
+def _read(data: bytes, depth: int, out: list[Packet]) -> None:
+    if not data or depth > MAX_DEPTH:
         return
-    tipo_id = dados[0] & MASCARA_TIPO
-    if tipo_id >= len(NOMES):
+    kind_id = data[0] & KIND_MASK
+    if kind_id >= len(KIND_NAMES):
         return
-    if tipo_id == TIPO_UNIDO:
-        _ler_unido(dados, profundidade, saida)
+    if kind_id == MERGED_KIND:
+        _read_merged(data, depth, out)
         return
-    pacote = _folha(dados, tipo_id)
-    if pacote is not None:
-        saida.append(pacote)
+    packet = _leaf(data, kind_id)
+    if packet is not None:
+        out.append(packet)
 
 
-def _ler_unido(dados: bytes, profundidade: int, saida: list[Pacote]) -> None:
+def _read_merged(data: bytes, depth: int, out: list[Packet]) -> None:
     pos = 1
-    while pos + 2 <= len(dados):
-        tamanho = int.from_bytes(dados[pos:pos + 2], "little")
+    while pos + 2 <= len(data):
+        size = int.from_bytes(data[pos:pos + 2], "little")
         pos += 2
-        if tamanho == 0 or pos + tamanho > len(dados):
+        if size == 0 or pos + size > len(data):
             return
-        _ler(dados[pos:pos + tamanho], profundidade + 1, saida)
-        pos += tamanho
+        _read(data[pos:pos + size], depth + 1, out)
+        pos += size
 
 
-def _folha(dados: bytes, tipo_id: int) -> Pacote | None:
-    fragmentado = bool(dados[0] & MASCARA_FRAGMENTADO)
-    nome = NOMES[tipo_id]
+def _leaf(data: bytes, kind_id: int) -> Packet | None:
+    fragmented = bool(data[0] & FRAGMENTED_MASK)
+    name = KIND_NAMES[kind_id]
 
-    if tipo_id == 0:
-        return Pacote(nome, None, None, None, dados[1:])
+    if kind_id == 0:
+        return Packet(name, None, None, None, data[1:])
 
-    if tipo_id == 1:
-        cabecalho = 10 if fragmentado else 4
-        if len(dados) < cabecalho:
+    if kind_id == 1:
+        header = 10 if fragmented else 4
+        if len(data) < header:
             return None
-        fragmento = None
-        if fragmentado:
-            fragmento = (int.from_bytes(dados[4:6], "little"),
-                         int.from_bytes(dados[6:8], "little"),
-                         int.from_bytes(dados[8:10], "little"))
-        return Pacote(nome, dados[3],
-                      int.from_bytes(dados[1:3], "little"),
-                      fragmento, dados[cabecalho:])
+        fragment = None
+        if fragmented:
+            fragment = (int.from_bytes(data[4:6], "little"),
+                         int.from_bytes(data[6:8], "little"),
+                         int.from_bytes(data[8:10], "little"))
+        return Packet(name, data[3],
+                      int.from_bytes(data[1:3], "little"),
+                      fragment, data[header:])
 
-    # ack, ping, pong e os de controle nao carregam conteudo de jogo
-    return Pacote(nome, None, None, None, b"")
+    # ack, ping, pong and the control kinds carry no game payload
+    return Packet(name, None, None, None, b"")
 
 
-class Remontador:
-    """Junta os fragmentos e entrega mensagens LiteNetLib inteiras.
+class Reassembler:
+    """Joins fragments back into whole LiteNetLib messages.
 
-    Guarda por (canal, id do fragmento). Assim que todas as partes chegam,
-    devolve o conteudo colado; enquanto nao chegam, devolve nada.
+    Keyed by (channel, fragment id). Once every part has arrived it returns
+    the pieces glued together; until then it returns nothing.
     """
 
     def __init__(self):
-        self._pendentes: dict[tuple[int, int], dict[int, bytes]] = {}
-        self._totais: dict[tuple[int, int], int] = {}
-        self._relogio = 0
-        self._visto: dict[tuple[int, int], int] = {}
+        self._pending: dict[tuple[int, int], dict[int, bytes]] = {}
+        self._totals: dict[tuple[int, int], int] = {}
+        self._clock = 0
+        self._seen: dict[tuple[int, int], int] = {}
 
-    def alimentar(self, pacote: Pacote) -> list[bytes]:
-        """Devolve as mensagens completas que este pacote destravou."""
-        if not pacote.carrega_conteudo:
+    def feed(self, packet: Packet) -> list[bytes]:
+        """The complete messages this packet unlocked, if any."""
+        if not packet.carries_payload:
             return []
-        if pacote.fragmento is None:
-            return [pacote.dados] if pacote.dados else []
+        if packet.fragment is None:
+            return [packet.data] if packet.data else []
 
-        identificador, parte, total = pacote.fragmento
-        if total < 1 or total > PARTES_MAXIMAS or parte >= total:
-            return []
-
-        chave = (pacote.canal or 0, identificador)
-        self._relogio += 1
-        self._visto[chave] = self._relogio
-        partes = self._pendentes.setdefault(chave, {})
-        self._totais[chave] = total
-        partes[parte] = pacote.dados
-
-        if sum(len(p) for p in partes.values()) > BYTES_MAXIMOS:
-            self._descartar(chave)
-            return []
-        if len(partes) < total:
-            self._podar()
+        ident, part, total = packet.fragment
+        if total < 1 or total > MAX_PARTS or part >= total:
             return []
 
-        self._descartar(chave)
-        return [b"".join(partes[i] for i in range(total))]
+        key = (packet.channel or 0, ident)
+        self._clock += 1
+        self._seen[key] = self._clock
+        parts = self._pending.setdefault(key, {})
+        self._totals[key] = total
+        parts[part] = packet.data
 
-    def _descartar(self, chave) -> None:
-        self._pendentes.pop(chave, None)
-        self._totais.pop(chave, None)
-        self._visto.pop(chave, None)
+        if sum(len(p) for p in parts.values()) > MAX_BYTES:
+            self._drop(key)
+            return []
+        if len(parts) < total:
+            self._prune()
+            return []
 
-    def _podar(self) -> None:
-        """Fragmento cujo resto se perdeu na rede nunca completa; o mais antigo
-        sai pra memoria nao crescer sozinha."""
-        while len(self._pendentes) > FRAGMENTOS_MAXIMOS:
-            mais_velho = min(self._visto, key=self._visto.get)
-            self._descartar(mais_velho)
+        self._drop(key)
+        return [b"".join(parts[i] for i in range(total))]
+
+    def _drop(self, key) -> None:
+        self._pending.pop(key, None)
+        self._totals.pop(key, None)
+        self._seen.pop(key, None)
+
+    def _prune(self) -> None:
+        """A fragment whose siblings were lost on the wire never completes,
+        so the oldest one is dropped to keep memory from growing on its own."""
+        while len(self._pending) > MAX_PENDING_FRAGMENTS:
+            oldest = min(self._seen, key=self._seen.get)
+            self._drop(oldest)
