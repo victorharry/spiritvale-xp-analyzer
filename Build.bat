@@ -31,6 +31,15 @@ if errorlevel 1 (
 )
 
 echo.
+echo Conferindo se o pacote saiu inteiro...
+.venv\Scripts\python.exe verificar_build.py
+if errorlevel 1 (
+  echo.
+  pause
+  exit /b 1
+)
+
+echo.
 echo Pronto: dist\XP Analyzer\XP Analyzer.exe
 echo Para gerar o instalador, rode o Instalador.bat
 echo.
