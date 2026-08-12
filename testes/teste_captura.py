@@ -57,7 +57,12 @@ try:
         print("  --  pulado: ha captura disponivel nesta maquina")
 except captura.SemCaptura as erro:
     conferir("levanta SemCaptura", True, True)
-    conferir("com mensagem curta pro rodape", len(str(erro)) <= 70, True)
+    # o rodape quebra linha (wraplength), entao o limite e legibilidade, nao
+    # largura: uma frase, sem jargao, dizendo o que fazer
+    conferir("cabe no rodape em duas linhas", len(str(erro)) <= 110, True)
+    conferir("sem jargao tecnico",
+             not any(p in str(erro).lower() for p in ("npcap", "socket", "pcap")),
+             True)
 
 print("\no monitor guarda o aviso pra janela poder mostrar:")
 conferir("tem o campo aviso", hasattr(captura.Monitor(), "aviso"), True)

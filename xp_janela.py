@@ -89,9 +89,14 @@ class JanelaXP(ctk.CTkToplevel):
                                  highlightthickness=0, bd=0)
         self.grafico.pack(padx=16, pady=(4, 6))
 
+        # `wraplength` e o que faz o texto quebrar em vez de sumir pelas
+        # bordas. Sem ele, uma mensagem longa (um aviso de configuracao, por
+        # exemplo) era cortada e o usuario nunca via o que precisava fazer.
+        # A largura vem do grafico, que e o elemento que define a coluna.
         self.detalhe = ctk.CTkLabel(corpo, text="", font=(FONTE, 12),
-                                    text_color=TEXTO_SUB, justify="left")
-        self.detalhe.pack(padx=16, pady=(0, 14), anchor="w")
+                                    text_color=TEXTO_SUB, justify="left",
+                                    wraplength=int(340 * self.escala_ui))
+        self.detalhe.pack(padx=16, pady=(0, 14), anchor="w", fill="x")
 
         # arrastar por qualquer parte que nao seja o botao de fechar
         for alvo in (self, corpo, topo, self.titulo, self.detalhe, self.grafico):
@@ -351,6 +356,8 @@ class JanelaXP(ctk.CTkToplevel):
         self.escala_ui = nova
         ctk.set_widget_scaling(nova)
         self.grafico.configure(width=int(340 * nova), height=int(155 * nova))
+        # a quebra de linha acompanha o zoom, senao o texto volta a estourar
+        self.detalhe.configure(wraplength=int(340 * nova))
         # deixa a janela reencolher: so crescer travaria no tamanho antigo
         self._largura = self._altura = 1
         self._ajustar()

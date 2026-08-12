@@ -55,3 +55,89 @@ Filename: "{app}\{#Exe}"; Description: "Abrir o {#Nome} agora"; \
 [UninstallDelete]
 ; a calibracao e os niveis ficam aqui; some junto na desinstalacao
 Type: filesandordirs; Name: "{userappdata}\{#Nome}"
+
+[Code]
+{ ---------------------------------------------------------------------------
+  O XP Analyzer le os pacotes que o servidor do jogo ja manda pra maquina.
+  O Windows so libera isso de dois jeitos: com um leitor de rede instalado
+  (o Npcap), ou rodando o programa como administrador TODA VEZ.
+
+  Instalar o Npcap aqui, uma vez, e o que faz o programa abrir normal daqui
+  pra frente. Sem isso o usuario tem que descobrir sozinho por que "nao
+  aparece nada" — e essa e a pior experiencia possivel.
+
+  Se o download falhar (sem internet, site fora), a instalacao SEGUE. O
+  programa funciona rodando como administrador e diz isso na propria janela.
+  --------------------------------------------------------------------------- }
+
+const
+  URL_NPCAP = 'https://npcap.com/dist/npcap-1.82.exe';
+
+var
+  PaginaBaixando: TDownloadWizardPage;
+  BaixouNpcap: Boolean;
+
+function LeitorDeRedePresente(): Boolean;
+begin
+  { as duas pastas onde o Npcap pode ficar, com ou sem modo compativel }
+  Result := FileExists(ExpandConstant('{sys}\wpcap.dll')) or
+            FileExists(ExpandConstant('{sys}\Npcap\wpcap.dll'));
+end;
+
+function AoBaixar(const Url, NomeArquivo: String; const Progresso, Total: Int64): Boolean;
+begin
+  Result := True;
+end;
+
+procedure InitializeWizard();
+begin
+  BaixouNpcap := False;
+  PaginaBaixando := CreateDownloadPage(
+    'Componente de leitura de rede',
+    'Baixando o que o XP Analyzer precisa para ler seu progresso',
+    @AoBaixar);
+end;
+
+function NextButtonClick(PaginaAtual: Integer): Boolean;
+begin
+  Result := True;
+  if (PaginaAtual = wpReady) and (not LeitorDeRedePresente()) then
+  begin
+    PaginaBaixando.Clear;
+    PaginaBaixando.Add(URL_NPCAP, 'npcap-setup.exe', '');
+    PaginaBaixando.Show;
+    try
+      try
+        PaginaBaixando.Download;
+        BaixouNpcap := True;
+      except
+        { sem internet ou site fora: nao trava a instalacao }
+        BaixouNpcap := False;
+      end;
+    finally
+      PaginaBaixando.Hide;
+    end;
+  end;
+end;
+
+procedure CurStepChanged(Passo: TSetupStep);
+var
+  Codigo: Integer;
+begin
+  if (Passo = ssPostInstall) and BaixouNpcap then
+  begin
+    { Uma opcao do instalador do Npcap decide se isso vai funcionar: com
+      "Restrict... to Administrators only" MARCADA, abrir a placa continua
+      exigindo elevacao e todo o proposito se perde. Por isso ela e citada pelo
+      nome, em vez de um generico "aceite o que ele sugerir". }
+    MsgBox('Falta um passo: o instalador do leitor de rede (Npcap) vai abrir.' + #13#10 + #13#10 +
+           'IMPORTANTE: deixe DESMARCADA a opcao' + #13#10 +
+           '   "Restrict Npcap driver''s access to Administrators only"' + #13#10 + #13#10 +
+           'As outras podem ficar como estao. Depois e so clicar em Install.' + #13#10 + #13#10 +
+           'Sem esse componente, o XP Analyzer so funciona se voce abrir o' + #13#10 +
+           'programa como administrador toda vez.',
+           mbInformation, MB_OK);
+    Exec(ExpandConstant('{tmp}\npcap-setup.exe'), '', '',
+         SW_SHOW, ewWaitUntilTerminated, Codigo);
+  end;
+end;

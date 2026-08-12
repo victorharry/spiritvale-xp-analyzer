@@ -5,36 +5,28 @@ Mostra quanto falta pro proximo nivel de classe e de job, com XP por hora e um
 grafico do ritmo, numa janelinha que voce arrasta por cima do jogo.
 
 
-COMO O PROGRAMA LE SEU PROGRESSO
--------------------------------
+COMO FUNCIONA
+-------------
 
-Ele le os pacotes que o servidor do jogo ja manda pro seu computador. Sao o
-nivel e o XP exatos, sem voce digitar nada.
+O programa le os pacotes que o servidor do jogo ja manda pro seu computador.
+Sao o nivel e o XP exatos, sem voce digitar nada.
 
-Pra isso o Windows exige uma de duas coisas — escolha a que preferir:
+O Windows exige uma permissao pra isso, e o instalador ja cuida dela: durante
+a instalacao ele baixa e abre o Npcap, um leitor de rede. E uma vez so.
 
-  A) Instalar o Npcap (uma vez so). Depois o XP Analyzer abre normal,
-     sem nenhuma tela de permissao.
+  Na tela do Npcap, deixe DESMARCADA a opcao
+     "Restrict Npcap driver's access to Administrators only"
+  As outras podem ficar como estao.
 
-  B) Nao instalar nada, e abrir o XP Analyzer COMO ADMINISTRADOR
-     (botao direito no atalho > Executar como administrador). Nesse caso
-     o Windows pede confirmacao toda vez que voce abrir.
-
-A opcao A da menos incomodo no dia a dia. A B nao instala nada.
+Depois disso o XP Analyzer abre normal, sem pedir permissao nenhuma.
 
 
-SE ESCOLHER O NPCAP
--------------------
+E SE EU NAO INSTALAR O NPCAP?
 
-    1. baixe em  https://npcap.com/#download
-    2. na instalacao:
-         MARQUE     "Install Npcap in WinPcap API-compatible Mode"
-         DESMARQUE  "Restrict Npcap driver's access to Administrators only"
-                    (marcada, ela obriga a abrir tudo como administrador)
-    3. abra o XP Analyzer
+O programa continua funcionando, mas ai voce precisa abrir ele como
+administrador toda vez (botao direito no atalho > Executar como
+administrador). Ele avisa isso na propria janela quando for o caso.
 
-E o mesmo Npcap que o Spirit Vale Overlay pede, com as mesmas opcoes. Se voce
-ja usa aquele, nao precisa instalar de novo.
 
 O que o programa faz e o que ele nao faz
 ----------------------------------------

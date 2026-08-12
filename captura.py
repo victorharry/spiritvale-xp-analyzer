@@ -45,7 +45,10 @@ def abrir_captura():
         return pcap.abrir()
     if bruto.disponivel():
         return bruto.abrir()
-    raise SemCaptura("no capture: install Npcap, or run as administrator")
+    # Sem jargao: "Npcap" e "raw socket" nao querem dizer nada pra quem so
+    # quer ver o XP. A mensagem diz o que FAZER, e o LEIA-ME explica o resto.
+    raise SemCaptura("can't read the game — right-click the shortcut and pick "
+                     "\"Run as administrator\"")
 
 
 class Monitor:
@@ -127,7 +130,7 @@ class Monitor:
 
         self._sessao = sessao
         self.estado = "esperando o jogo"
-        self._contar(f"capturing on {sessao.dispositivo}")
+        self._contar("connected — waiting for the game")
 
         remontador = litenetlib.Remontador()
         splits = fishnet.RemontadorSplit()

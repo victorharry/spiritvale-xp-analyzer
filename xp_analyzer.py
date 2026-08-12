@@ -209,9 +209,12 @@ class XPAnalyzer(ctk.CTk):
                     # a contagem de pacotes e o que separa os dois modos de
                     # falhar: zero = a captura nao esta vendo a rede; muitos =
                     # esta vendo, mas nao achou o personagem nos pacotes
-                    self.fila.put(("deteccao",
-                                   f"{self.monitor.aviso or self.monitor.estado}"
-                                   f"  ·  {self.monitor.pacotes} pkt"))
+                    # a contagem so entra quando ha o que contar: "0 pkt" nao
+                    # diz nada pra quem acabou de abrir o programa
+                    recado = self.monitor.aviso or self.monitor.estado
+                    if self.monitor.pacotes:
+                        recado += f"  ·  {self.monitor.pacotes:,} packets seen"
+                    self.fila.put(("deteccao", recado))
                 if sem_leitura in (10, 120):
                     self.fila.put(("erro", sem_leitura))
             else:
@@ -418,8 +421,8 @@ class XPAnalyzer(ctk.CTk):
                 elif tipo == "erro":
                     self.janela.avisar(
                         "waiting for the game",
-                        "the server only reports your progress when it "
-                        "changes — gain a little XP")
+                        "open the game and gain a little XP — your progress "
+                        "only arrives when it changes")
                 elif tipo == "deteccao":
                     self.janela.detalhe.configure(text=dados)
                 elif tipo == "fonte":
