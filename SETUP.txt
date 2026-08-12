@@ -5,30 +5,21 @@ Shows how long until your next class and job level, with XP per hour and a
 live rate chart, in a small window you drag over the game.
 
 
-HOW IT WORKS
-------------
+WINDOWS WILL ASK FOR PERMISSION
+-------------------------------
 
-The program reads the packets the game server already sends to your computer.
-That gives your exact level and XP, with nothing to type in.
+Every time you open the XP Analyzer, Windows shows a permission prompt. Click
+Yes and it works.
 
-Windows needs a permission for that, and the installer already takes care of
-it: during setup it downloads and opens Npcap, a network reader. Once only.
+That is not optional, and it is not a bug. The program reads the network
+packets the game server already sends to your computer — that is where your
+exact level and XP come from, with nothing to type in. Windows only lets a
+program read the network with administrator rights.
 
-  On the Npcap screen, leave this option UNTICKED:
-     "Restrict Npcap driver's access to Administrators only"
-  The rest can stay as they are.
-
-After that the XP Analyzer opens normally, without asking for anything.
-
-
-WHAT IF I SKIP NPCAP?
-
-The program still works, but then you have to open it as administrator every
-time (right-click the shortcut > Run as administrator). It tells you so in its
-own window when that is the case.
-
-It is the same Npcap the Spirit Vale Overlay asks for, with the same options.
-If you already use that one, you do not need to install it again.
+If you would rather not see the prompt, there is a way: install Npcap
+(https://npcap.com/#download), a network reader that holds the permission for
+you. It is the same one the Spirit Vale Overlay uses. The XP Analyzer picks it
+up automatically. That is a manual step and entirely up to you.
 
 
 WHAT IT DOES AND DOES NOT DO
@@ -44,15 +35,17 @@ Does not:
   - never automates anything inside the game: no clicking, no mouse movement,
     no key presses
 
-The capture is passive: this machine's traffic only, read only.
+The capture is passive: this machine's traffic only, read only. That is also
+why it needs the permission — reading the network is a privileged operation
+even when you only ever look.
 
 
 NOTHING SHOWS UP?
 -----------------
 
 The window itself tells you what is missing — whether the game is closed,
-whether it needs permission, or whether it is just waiting for you to gain XP.
+whether it lacks permission, or whether it is just waiting for you to gain XP.
 
-For a detailed check, run the diagnostic:
+For a detailed check, run the diagnostic from the source folder:
 
     python listen.py
