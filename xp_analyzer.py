@@ -22,6 +22,7 @@ divergir e o app avisa pra rodar extrair_tabela.py de novo.
 
 from __future__ import annotations
 
+import ctypes
 import math
 import queue
 import threading
@@ -499,9 +500,20 @@ class XPAnalyzer(ctk.CTk):
 
 def main() -> None:
     settings.prepare_console()
-    # before anything else: it is what lets the installer notice this copy is
-    # running and ask for it to be closed, instead of dying on a locked DLL
-    settings.announce_running()
+    # Before anything else, and it does two jobs. It is what lets the installer
+    # notice this copy is running instead of dying on a locked DLL, and it is
+    # how a second launch finds out there is already a first one.
+    #
+    # Stacked copies are not harmless: each one opens its own capture and puts
+    # another overlay in the same place, so the top one hides the others and
+    # the user sees a single window that will not close.
+    if not settings.announce_running():
+        ctypes.windll.user32.MessageBoxW(
+            0, "The XP Analyzer is already running.\n\n"
+               "Look for the overlay on your screen — it may be behind the "
+               "game window, or dragged off to a corner.",
+            "XP Analyzer", 0x40)          # MB_ICONINFORMATION
+        return
     ctk.set_appearance_mode("dark")
     try:
         app = XPAnalyzer()

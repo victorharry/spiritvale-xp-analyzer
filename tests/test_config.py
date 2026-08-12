@@ -61,11 +61,25 @@ def enxerga(nome):
 nome_local = settings.MUTEX_NAME
 nome_global = f"Global\\{nome_local}"
 conferir("nao existe antes de anunciar", enxerga(nome_local), False)
-settings.announce_running()
+conferir("a primeira copia se reconhece como unica",
+         settings.announce_running(), True)
 conferir("o local fica visivel", enxerga(nome_local), True)
 conferir("o global tambem", enxerga(nome_global), True)
-settings.announce_running()               # chamar duas vezes nao duplica nada
-conferir("anunciar de novo nao acumula", len(settings._mutexes), 2)
+conferir("anunciar de novo nao acumula",
+         (settings.announce_running(), len(settings._mutexes)), (True, 2))
+
+# O caso que interessa e OUTRO processo, nao outra chamada: o primeiro tinha
+# que continuar aberto pra segunda copia descobrir que ja existe.
+import subprocess
+
+segunda = subprocess.run(
+    [sys.executable, "-c",
+     "import sys; sys.path.insert(0, r'%s'); import settings; "
+     "print(settings.announce_running())"
+     % str(Path(__file__).resolve().parent.parent)],
+    capture_output=True, text=True, timeout=60)
+conferir("uma segunda copia se reconhece como repetida",
+         segunda.stdout.strip(), "False")
 
 iss = Path(__file__).resolve().parent.parent / "installer.iss"
 if iss.exists():

@@ -56,16 +56,22 @@ DEFAULTS = {
 MUTEX_NAME = "XPAnalyzerRunning"
 _mutexes: list[int] = []
 
-# Grants SYNCHRONIZE and READ_CONTROL to Everyone, which is what OpenMutex
-# needs — and it is the whole point. A mutex created by an elevated process
-# gets a default DACL built for the elevated token, where the permission goes
-# to the Administrators group. The installer is NOT elevated, and in its token
-# that group is marked deny-only: it would be refused, find nothing, and go on
-# to fail on the locked DLL exactly as before.
+# MUTEX_ALL_ACCESS to Everyone, and the width is deliberate.
 #
-# Nothing is protected by this mutex — it carries one bit, "the app is open" —
-# so an open DACL costs nothing.
-_SDDL = "D:(A;;0x120000;;;WD)"
+# A mutex created by an elevated process gets a default DACL written for the
+# elevated token, where the access goes to the Administrators group — a group
+# that is marked deny-only in the token of the unelevated installer. It would
+# be refused, find nothing, and fail on the locked DLL exactly as before.
+#
+# SYNCHRONIZE alone is not enough either, even though it is all OpenMutex
+# needs. A second copy of the app detects the first by CREATING the mutex and
+# being told the name was taken, and CreateMutex on an existing object asks for
+# full access: with a narrower DACL it came back "access denied", the handle
+# was null, and the second copy happily started alongside the first.
+#
+# Nothing is protected by this mutex. It carries one bit — "the app is open" —
+# and is never waited on, so an open DACL costs nothing.
+_SDDL = "D:(A;;0x1F0001;;;WD)"
 
 
 class _SecurityAttributes(ctypes.Structure):
@@ -89,17 +95,35 @@ def _open_to_everyone():
                                descriptor, False)
 
 
-def announce_running() -> None:
+ERROR_ALREADY_EXISTS = 183
+
+
+def announce_running() -> bool:
     """Publishes a named mutex that lives as long as this process does.
 
+    Returns whether this is the FIRST copy running. Creating the mutex already
+    answers that — Windows says whether the name was taken — so the same call
+    covers both jobs.
+
     Two names on purpose. The `Global\\` one crosses sessions and elevation
-    levels, which is the gap that matters here; creating it needs a privilege
-    a plain user may not have, so the session-local one is the fallback. The
-    installer checks both and only needs one.
+    levels, which is the gap that matters for the installer; creating it needs
+    a privilege a plain user may not have, so the session-local one is the
+    fallback. The installer checks both and only needs one.
+
+    The "am I the first" answer comes from the session-local name, never the
+    global one: two people logged into the same machine are two separate
+    desktops, each entitled to its own overlay.
     """
-    if os.name != "nt" or _mutexes:
-        return
-    kernel = ctypes.windll.kernel32
+    if os.name != "nt":
+        return True
+    if _mutexes:
+        return True                       # already announced, by us
+    # NOT ctypes.windll.kernel32: on that handle the error code has to be read
+    # with a second, separate call to GetLastError, and by then ctypes has made
+    # calls of its own and the value is whatever they left behind. It reported
+    # "the name was free" while another copy was holding it. With
+    # use_last_error, ctypes captures the code at the call itself.
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int,
                                     ctypes.c_wchar_p]
     kernel.CreateMutexW.restype = ctypes.c_void_p    # a HANDLE is pointer-sized
@@ -107,16 +131,42 @@ def announce_running() -> None:
         attributes = _open_to_everyone()
     except Exception:
         attributes = None
+    first = True
     for name in (f"Global\\{MUTEX_NAME}", MUTEX_NAME):
         try:
             handle = kernel.CreateMutexW(
                 ctypes.byref(attributes) if attributes else None, False, name)
+            taken = ctypes.get_last_error() == ERROR_ALREADY_EXISTS
         except Exception:
             continue
         if handle:
             # kept in a module global so it is never garbage collected: closing
             # the handle would tell the installer the program had quit
             _mutexes.append(handle)
+        else:
+            # could not create it at all — an older copy with a stricter DACL,
+            # or no privilege for the Global namespace. Then the only question
+            # left is whether the name exists, which needs far less access.
+            taken = _exists(name)
+        if name == MUTEX_NAME and taken:
+            first = False
+    return first
+
+
+def _exists(name: str) -> bool:
+    """Whether some other process already holds this mutex."""
+    try:
+        kernel = ctypes.windll.kernel32
+        kernel.OpenMutexW.argtypes = [ctypes.c_ulong, ctypes.c_int,
+                                      ctypes.c_wchar_p]
+        kernel.OpenMutexW.restype = ctypes.c_void_p
+        handle = kernel.OpenMutexW(0x00100000, False, name)   # SYNCHRONIZE
+    except Exception:
+        return False
+    if not handle:
+        return False
+    ctypes.windll.kernel32.CloseHandle(ctypes.c_void_p(handle))
+    return True
 
 
 def prepare_console() -> None:
