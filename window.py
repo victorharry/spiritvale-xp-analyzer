@@ -58,8 +58,11 @@ class Overlay(ctk.CTkToplevel):
         corpo = ctk.CTkFrame(self, fg_color=CARTAO, corner_radius=12)
         corpo.pack(fill="both", expand=True, padx=1, pady=1)
 
+        self.corpo = corpo
         topo = ctk.CTkFrame(corpo, fg_color="transparent")
         topo.pack(fill="x", padx=16, pady=(10, 0))
+        self.topo = topo
+        self.banner = None                 # so existe se houver atualizacao
         self.titulo = ctk.CTkLabel(topo, text="XP Analyzer", font=(FONTE, 14, "bold"),
                                    text_color=TEXTO_SUB)
         self.titulo.pack(side="left")
@@ -284,6 +287,60 @@ class Overlay(ctk.CTkToplevel):
     def _largura_texto(self) -> int:
         """Onde a linha do rodape deve quebrar, ja descontado o padding."""
         return int((self.LARGURA_BASE - 2 * self.PADDING) * self.escala_ui)
+
+    # -- aviso de atualizacao ---------------------------------------------
+
+    def mostrar_atualizacao(self, version: str, url: str,
+                            ao_dispensar=None) -> None:
+        """Uma faixa entre o titulo e o payload, dizendo que saiu versao nova.
+
+        Fica FORA dos tres paineis de proposito: ela precisa continuar visivel
+        quando a janela troca de tela — inclusive no modo compacto, onde nao ha
+        rodape nenhum onde escrever.
+
+        Nao interrompe nada: sem caixa de dialogo, sem roubar o foco do jogo.
+        Quem nao quiser clica no ✕ e nao ve mais aquela versao.
+        """
+        if self.banner is not None:
+            return                          # ja avisado nesta session
+        faixa = ctk.CTkFrame(self.corpo, fg_color=CARTAO2, corner_radius=10,
+                             border_width=1, border_color=LARANJA)
+        faixa.pack(fill="x", padx=16, pady=(8, 0), after=self.topo)
+        self.banner = faixa
+
+        texto = ctk.CTkFrame(faixa, fg_color="transparent")
+        texto.pack(side="left", fill="x", expand=True, padx=(12, 0), pady=8)
+        titulo = ctk.CTkLabel(texto, text=f"Version {version} is out",
+                              font=(FONTE, 12, "bold"), text_color=LARANJA,
+                              anchor="w")
+        titulo.pack(anchor="w")
+        link = ctk.CTkLabel(texto, text="click here to download",
+                            font=(FONTE, 11), text_color=TEXTO_SUB, anchor="w")
+        link.pack(anchor="w")
+
+        def abrir(_evento=None):
+            import webbrowser
+            webbrowser.open(url)
+
+        for alvo in (faixa, texto, titulo, link):
+            alvo.configure(cursor="hand2")
+            alvo.bind("<Button-1>", abrir)
+
+        def dispensar():
+            faixa.pack_forget()
+            self.banner = faixa            # nao volta nesta session
+            # a faixa some, e a janela tem que devolver a altura dela: _ajustar
+            # so cresce, entao e preciso zerar antes de remedir
+            self._largura = self._altura = 1
+            self._ajustar()
+            if ao_dispensar:
+                ao_dispensar(version)
+
+        ctk.CTkButton(faixa, text="✕", width=24, height=24,
+                      fg_color="transparent", hover_color=BORDA,
+                      text_color=TEXTO_SUB, font=(FONTE, 13),
+                      command=dispensar).pack(side="right", padx=(0, 8))
+        self._ajustar()
 
     def rodape(self, text: str) -> None:
         """Escreve no rodape e ajusta a janela.

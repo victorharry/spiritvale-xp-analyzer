@@ -7,7 +7,8 @@
 ; works, with no Windows permission prompt.
 
 #define AppName "XP Analyzer"
-#define AppVersion "2.0.0"
+; keep in step with updates.py — verify_build.py refuses to package a mismatch
+#define AppVersion "2.1.0"
 #define Publisher "victorharry"
 #define ExeName "XP Analyzer.exe"
 

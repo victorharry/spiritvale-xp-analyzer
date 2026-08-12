@@ -14,10 +14,16 @@ of megabytes across hundreds of files. If anything is missing, both drop.
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
-FOLDER = Path(__file__).resolve().parent / "dist" / "XP Analyzer"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import updates
+
+ROOT = Path(__file__).resolve().parent
+FOLDER = ROOT / "dist" / "XP Analyzer"
+INSTALLER = ROOT / "installer.iss"
 EXECUTABLE = FOLDER / "XP Analyzer.exe"
 
 # measured on a healthy package (~29 MB, ~960 files). The slack is generous on
@@ -31,11 +37,34 @@ ESSENTIAL = ("_internal/libffi-8.dll", "_internal/base_library.zip",
              "_internal/customtkinter", "_internal/_socket.pyd")
 
 
+def version_mismatch() -> str | None:
+    """The installer's version and the app's have to be the same number.
+
+    They are written in two different files, and only one of them is what the
+    running program compares against GitHub. If they drift, the release is
+    published as 2.1.0 while every copy of it keeps announcing itself as 2.0.0
+    — and then the update notice either never fires or never stops.
+    """
+    if not INSTALLER.exists():
+        return None
+    text = INSTALLER.read_text(encoding="utf-8", errors="replace")
+    match = re.search(r'#define\s+AppVersion\s+"([^"]+)"', text)
+    if not match:
+        return "installer.iss has no AppVersion"
+    if match.group(1) != updates.VERSION:
+        return (f"version mismatch: installer.iss says {match.group(1)}, "
+                f"updates.py says {updates.VERSION}")
+    return None
+
+
 def problems() -> list[str]:
     if not EXECUTABLE.exists():
         return [f"missing: {EXECUTABLE}"]
 
     found = []
+    drift = version_mismatch()
+    if drift:
+        found.append(drift)
     files = [f for f in FOLDER.rglob("*") if f.is_file()]
     size = sum(f.stat().st_size for f in files)
     if size < MIN_SIZE:
@@ -56,8 +85,9 @@ def main() -> int:
         print("INCOMPLETE BUILD — do not build the installer from this:\n")
         for line in found:
             print(f"  - {line}")
-        print("\nAlmost always the XP Analyzer is open and holding the DLLs.")
-        print("Close the program and run Build.bat again.")
+        if any("version" not in line for line in found):
+            print("\nAlmost always the XP Analyzer is open and holding the DLLs.")
+            print("Close the program and run Build.bat again.")
         return 1
 
     files = [f for f in FOLDER.rglob("*") if f.is_file()]

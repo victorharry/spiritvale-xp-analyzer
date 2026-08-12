@@ -101,6 +101,19 @@ fixed address, then checks the result against independent measurements.
 Why the table is in the client at all, and why no formula reproduces it, is
 [the story on the site](https://victorharry.github.io/spiritvale-xp-analyzer/).
 
+### Update check → `updates.py`
+
+One request to GitHub's public Releases API at startup, in a background thread.
+If a newer version is out, a small banner appears at the top of the overlay
+with a link; closing it means that version is never mentioned again. Nothing is
+sent, nothing is downloaded, and if GitHub is unreachable the check silently
+does not happen. `updates.VERSION` is the single source of truth for the
+version number — `verify_build.py` refuses to package a build whose
+`installer.iss` disagrees with it.
+
+To turn it off, set `"update_check": false` in `config.json` (next to the .exe
+when running from source, in `%APPDATA%\XP Analyzer` when installed).
+
 ### The interface → `xp_analyzer.py`, `window.py`, `xp.py`, `settings.py`
 
 `xp_analyzer.py` is the entry point and the glue. `window.py` is the overlay
@@ -118,7 +131,7 @@ table is a table.
 
 ### `tests/`
 
-Six suites, no framework — plain scripts that print what they checked and exit
+Seven suites, no framework — plain scripts that print what they checked and exit
 non-zero on failure. `test_network.py` builds a real packet from the inside out
 (fragmented, out of order, merged, VLAN-tagged) and asserts the whole stack
 unwraps it. `test_xp_table.py` checks the extracted table against measurements

@@ -34,6 +34,7 @@ import rawsocket
 import capture
 import settings
 import pcap
+import updates
 import xp_table
 import xp as motor_xp
 from window import Overlay
@@ -97,7 +98,26 @@ class XPAnalyzer(ctk.CTk):
             else self.janela.posicionar(60, 60)
 
         threading.Thread(target=self._worker, daemon=True).start()
+        self._checar_atualizacao()
         self._drenar()
+
+    def _checar_atualizacao(self) -> None:
+        """Pergunta ao GitHub se saiu versao nova, sem segurar a abertura.
+
+        Vai pela fila como todo o resto: o resultado chega numa thread de rede
+        e mexer em widget fora da thread da interface trava o Tk em casos que
+        so aparecem na maquina dos outros.
+        """
+        if not self.cfg.get("update_check", True):
+            return
+        updates.check_in_background(
+            lambda release: self.fila.put(("atualizacao", release)),
+            skipped=str(self.cfg.get("update_skipped") or ""))
+
+    def _ignorar_atualizacao(self, version: str) -> None:
+        """Fechar o aviso significa 'nao me mostre ESTA versao de novo'."""
+        self.cfg["update_skipped"] = version
+        settings.save(self.cfg)
 
     def _pedir_niveis(self) -> bool:
         """Ultimo recurso: perguntar o level.
@@ -432,6 +452,10 @@ class XPAnalyzer(ctk.CTk):
                     self.janela.esperando(*data)
                 elif kind == "deteccao":
                     self.janela.rodape(data)
+                elif kind == "atualizacao":
+                    self.janela.mostrar_atualizacao(
+                        data.version, data.url,
+                        ao_dispensar=self._ignorar_atualizacao)
                 elif kind == "fonte":
                     print(data)          # so no console: o titulo fica limpo
         except queue.Empty:

@@ -8,7 +8,7 @@ timeout /t 3 /nobreak >nul
 
 echo.
 echo Running the tests before packaging...
-for %%T in (test_character test_network test_levels test_config test_xp_table test_capture) do (
+for %%T in (test_character test_network test_levels test_config test_xp_table test_capture test_updates) do (
   .venv\Scripts\python.exe tests\%%T.py >nul 2>&1
   if errorlevel 1 (
     echo *** %%T FAILED. Build cancelled.
@@ -32,7 +32,7 @@ if errorlevel 1 (
 
 echo.
 echo Checking that the package came out complete...
-.venv\Scripts\python.exe verificar_build.py
+.venv\Scripts\python.exe verify_build.py
 if errorlevel 1 (
   echo.
   pause
