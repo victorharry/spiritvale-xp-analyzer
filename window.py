@@ -91,6 +91,9 @@ class Overlay(ctk.CTkToplevel):
         self.compacto = False
         self._tem_dados = False
         self._teto = {"base": False, "job": False}
+        self._aguardando_em: set[str] = set()
+        self._pontos = 0
+        self._pontos_anim = None
         self._painel = None
         self._pulso = 0.0
         self._animacao = None
@@ -325,6 +328,51 @@ class Overlay(ctk.CTkToplevel):
     # level maximo de cada barra: chegando ali, nao ha next_packet level pra estimar
     TETO = {"base": 150, "job": 70}
 
+    # font sizes for the big line: a time is short and shouts, a status
+    # sentence is long and should not
+    FONTE_TEMPO = 30
+    FONTE_STATUS = 13
+
+    def _aguardando(self, qual: str, frase: str, rodape: str) -> None:
+        """Puts a sentence in the big slot instead of a meaningless dash.
+
+        That slot is the most prominent part of the block, and a grey "—" wastes
+        it: it says nothing about whether the program is working, stuck or done.
+        The animated dots carry the one bit the user actually wants — something
+        is still happening.
+        """
+        bloco = self.blocos[qual]
+        bloco["frase"] = frase
+        bloco["eta"].configure(text=frase, text_color=TEXTO_SUB,
+                               font=(FONTE, self.FONTE_STATUS))
+        bloco["rodape"].configure(text=rodape)
+        self._aguardando_em.add(qual)
+        self._animar_pontos()
+
+    def _mostrar_tempo(self, qual: str, texto: str, cor: str) -> None:
+        """Back to the big number: a real time, or MAX."""
+        self._aguardando_em.discard(qual)
+        self.blocos[qual]["eta"].configure(text=texto, text_color=cor,
+                                           font=(FONTE, self.FONTE_TEMPO, "bold"))
+
+    def _animar_pontos(self) -> None:
+        """One timer for every waiting block, cycling '' . .. ...
+
+        A single loop on purpose: two blocks blinking out of phase reads as two
+        unrelated things happening, when it is one program doing one thing.
+        """
+        if self._pontos_anim is not None:
+            self.after_cancel(self._pontos_anim)
+            self._pontos_anim = None
+        if not self._aguardando_em or not self.winfo_exists():
+            return
+        self._pontos = (self._pontos + 1) % 4
+        sufixo = "." * self._pontos
+        for qual in self._aguardando_em:
+            bloco = self.blocos[qual]
+            bloco["eta"].configure(text=bloco.get("frase", "") + sufixo)
+        self._pontos_anim = self.after(420, self._animar_pontos)
+
     def atualizar_bloco(self, qual: str, level: int, pct: float | None,
                         eta: float | None, rate: float | None) -> None:
         # chegou reading: a tela de convite ja cumpriu o papel dela
@@ -341,28 +389,27 @@ class Overlay(ctk.CTkToplevel):
         # quanto este level PEDE. Sem isso nao existe porcentagem — e dizer
         # "0.0% done" seria inventar. Aqui a janela pede o que falta.
         if pct is None:
-            bloco["eta"].configure(text="—", text_color=TEXTO_SUB)
-            bloco["rodape"].configure(text="click the level ↑ and type the %")
+            self._aguardando(qual, "Level size unknown",
+                             "click the level above and type the %")
             return
 
         # Barra no maximo ficava dizendo "measuring..." pra sempre: sem ganho a
         # rate e 0, o ETA vira None e a interface parecia travada. Agora ela diz
         # o que e — nao ha o que medir.
         if level >= self.TETO.get(qual, 10**9) and pct >= 99.9:
-            bloco["eta"].configure(text="MAX", text_color=bloco["cor"])
+            self._mostrar_tempo(qual, "MAX", bloco["cor"])
             bloco["rodape"].configure(text="max level reached")
             return
         if eta is None:
-            bloco["eta"].configure(text="—", text_color=TEXTO_SUB)
-            bloco["rodape"].configure(text=f"{pct:.1f}% done · measuring…")
+            self._aguardando(qual, "Calculating time to level up",
+                             f"{pct:.1f}% done")
             return
         if rate:
             ritmo = (f"{rate:.1f}%/h" if rate < 100
                      else f"{rate / 100:.2f} levels/h")
         else:
             ritmo = "—"
-        bloco["eta"].configure(text=motor_xp.format_time(eta),
-                               text_color=bloco["cor"])
+        self._mostrar_tempo(qual, motor_xp.format_time(eta), bloco["cor"])
         bloco["rodape"].configure(
             text=f"{pct:.1f}% done  ·  to {level + 1}  ·  {ritmo}")
 
