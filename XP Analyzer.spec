@@ -29,17 +29,18 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    # Pede elevacao no manifesto: o Windows mostra a UAC ao abrir e o programa
-    # nunca roda sem ela. Sem isso, ler a rede so funciona com o Npcap
-    # instalado — e quem nao tinha via a janela vazia sem entender por que.
+    # Asks for elevation in the manifest: Windows shows the UAC prompt on
+    # launch and the program never runs without it. Without this, reading the
+    # network only works when Npcap is installed — and whoever lacked it saw
+    # an empty window with no idea why.
     #
-    # A UAC toda vez incomoda, mas incomoda de um jeito PREVISIVEL: o usuario
-    # clica em Sim e funciona. A alternativa era um programa que as vezes
-    # funciona e as vezes nao, dependendo de um componente que ele nem sabe
-    # que existe.
+    # A prompt every time is annoying, but it is annoying PREDICTABLY: you
+    # click Yes and it works. The alternative was a program that sometimes
+    # works and sometimes does not, depending on a component the user does
+    # not know exists.
     #
-    # Com o Npcap instalado o caminho dele continua sendo o preferido (ver
-    # captura.abrir_captura); a elevacao so garante que HA um caminho.
+    # With Npcap installed its path is still preferred (see
+    # capture.open_capture_backend); elevation only guarantees a path exists.
     uac_admin=True,
     name='XP Analyzer',
     debug=False,

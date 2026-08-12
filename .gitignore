@@ -6,10 +6,10 @@ debug/
 *.png
 build/
 dist/
-# o .spec e a CONFIGURACAO do build, nao um artefato dele: e la que moram
-# o uac_admin, os modulos excluidos e a coleta do customtkinter. Ignorar isso
-# fazia o Build.bat depender de um arquivo que ninguem mais teria.
+# The .spec is build CONFIGURATION, not a build artifact: uac_admin, the
+# excluded modules and the customtkinter collection all live there. Ignoring
+# it made Build.bat depend on a file nobody else would have.
 *.spec
 !XP Analyzer.spec
-instalador/
+installer/
 *.zip

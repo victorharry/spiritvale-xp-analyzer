@@ -1,17 +1,17 @@
 @echo off
-title Build do XP Analyzer
+title XP Analyzer build
 cd /d "%~dp0"
 
-echo Fechando o XP Analyzer, se estiver aberto...
+echo Closing the XP Analyzer if it is running...
 taskkill /IM "XP Analyzer.exe" /F >nul 2>&1
 timeout /t 3 /nobreak >nul
 
 echo.
-echo Conferindo os testes antes de empacotar...
-for %%T in (test_character teste_rede teste_nivel teste_config teste_tabela teste_captura) do (
+echo Running the tests before packaging...
+for %%T in (test_character test_network test_levels test_config test_xp_table test_capture) do (
   .venv\Scripts\python.exe tests\%%T.py >nul 2>&1
   if errorlevel 1 (
-    echo *** %%T FALHOU. Build cancelado.
+    echo *** %%T FAILED. Build cancelled.
     pause
     exit /b 1
   )
@@ -19,19 +19,19 @@ for %%T in (test_character teste_rede teste_nivel teste_config teste_tabela test
 )
 
 echo.
-echo Gerando o executavel...
-rem A configuracao toda vive no .spec — nao repita opcoes aqui, senao as duas
-rem versoes divergem e o build passa a depender de por onde foi chamado.
+echo Building the executable...
+rem All configuration lives in the .spec — do not repeat options here, or the
+rem two copies drift and the build starts depending on how it was invoked.
 .venv\Scripts\python.exe -m PyInstaller --noconfirm --clean "XP Analyzer.spec"
 if errorlevel 1 (
   echo.
-  echo *** DEU ERRO no build. A saida acima diz o motivo.
+  echo *** BUILD FAILED. The output above says why.
   pause
   exit /b 1
 )
 
 echo.
-echo Conferindo se o pacote saiu inteiro...
+echo Checking that the package came out complete...
 .venv\Scripts\python.exe verificar_build.py
 if errorlevel 1 (
   echo.
@@ -40,7 +40,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo Pronto: dist\XP Analyzer\XP Analyzer.exe
-echo Para gerar o instalador, rode o Instalador.bat
+echo Done: dist\XP Analyzer\XP Analyzer.exe
+echo To build the installer, run Installer.bat
 echo.
 pause

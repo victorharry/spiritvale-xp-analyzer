@@ -61,7 +61,7 @@ def main() -> int:
 
     arquivos = [c for c in PASTA.rglob("*") if c.is_file()]
     size = sum(c.stat().st_size for c in arquivos)
-    print(f"packet OK: {size / 1e6:.1f} MB em {len(arquivos)} arquivos")
+    print(f"package OK: {size / 1e6:.1f} MB across {len(files)} files")
     return 0
 
 
