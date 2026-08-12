@@ -30,6 +30,36 @@ only"* during its install. The XP Analyzer picks it up automatically and stops
 needing elevation. It is the same component the Spirit Vale Overlay uses, so
 if you already run that one, you already have it.
 
+## Windows will say it does not recognise the app
+
+The first time you open the installer, SmartScreen shows a blue window —
+*"Windows protected your PC"*. Click **More info**, then **Run anyway**.
+
+That message does not mean anything was found in the file. It means the program
+is not **signed**: Windows shows it for every executable downloaded from the
+internet that does not carry a code signing certificate, whoever wrote it.
+
+Signing is not free. A certificate costs somewhere between US$120 and US$600 a
+year depending on the kind, and it has to be renewed. This is a tool one person
+wrote for a game, given away, so it is not signed — and waiting it out does not
+help either: without a certificate, SmartScreen's reputation is attached to the
+exact file, so every new release starts from zero again.
+
+**You do not have to take my word for any of it.** The whole program is in this
+repository — every line that reads the network, decodes the packets and draws
+the window. If you would rather not run a binary a stranger built, build your
+own from the same source:
+
+```bash
+git clone https://github.com/victorharry/spiritvale-xp-analyzer
+cd spiritvale-xp-analyzer
+pip install -r requirements.txt
+python xp_analyzer.py
+```
+
+That runs it directly, with no .exe involved. `Build.bat` packages the same
+thing into the executable that is published here.
+
 ## What it does and does not do
 
 **Does:** reads network packets that are already arriving on this machine.
@@ -46,15 +76,12 @@ only.
 
 ## Running from source
 
-```bash
-pip install -r requirements.txt
-python xp_analyzer.py
-```
+The commands are in the section above. The only third-party dependency is
+`customtkinter` — everything else, from the network capture to the packet
+decoding to the interface, is the Python standard library.
 
-The only third-party dependency is `customtkinter`. Everything else — network
-capture, packet decoding, the UI — is the Python standard library.
-
-To build the `.exe` and the installer, run `Build.bat` and then `Installer.bat`.
+`Build.bat` packages it into the `.exe` (it runs the tests first and refuses to
+package an incomplete build). `Installer.bat` then wraps that into Setup.exe.
 
 ---
 
