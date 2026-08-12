@@ -201,20 +201,7 @@ class XPAnalyzer(ctk.CTk):
             if pacote is None:
                 sem_leitura += 1
                 if sem_leitura % 6 == 0:
-                    # Sem leitura, o unico jeito de o usuario entender o que
-                    # esta havendo e ver o estado da captura. Isso so ia pro
-                    # print(), e o .exe nao tem console — a janela dizia
-                    # "waiting for the game" tanto pra jogo fechado quanto pra
-                    # captura que nunca abriu.
-                    # a contagem de pacotes e o que separa os dois modos de
-                    # falhar: zero = a captura nao esta vendo a rede; muitos =
-                    # esta vendo, mas nao achou o personagem nos pacotes
-                    # a contagem so entra quando ha o que contar: "0 pkt" nao
-                    # diz nada pra quem acabou de abrir o programa
-                    recado = self.monitor.aviso or self.monitor.estado
-                    if self.monitor.pacotes:
-                        recado += f"  ·  {self.monitor.pacotes:,} packets seen"
-                    self.fila.put(("deteccao", recado))
+                    self.fila.put(("espera", self._convite()))
                 if sem_leitura in (10, 120):
                     self.fila.put(("erro", sem_leitura))
             else:
@@ -236,6 +223,24 @@ class XPAnalyzer(ctk.CTk):
             fim = time.time() + 0.5
             while time.time() < fim and not self.parar.is_set():
                 time.sleep(0.1)
+
+    def _convite(self) -> tuple[str, str]:
+        """(titulo, explicacao) da tela de espera, conforme o que falta.
+
+        Sao tres situacoes bem diferentes e o usuario nao tem como distinguir
+        sozinho — a mesma janela vazia servia pra todas. Nada aqui fala de
+        pacote, captura ou driver: cada texto diz o que a PESSOA faz agora.
+        """
+        if self.monitor.estado in ("sem captura", "falhou"):
+            return ("Can't read the game",
+                    "Close the XP Analyzer and open it again with "
+                    "\"Run as administrator\".")
+        if not self.monitor.pacotes:
+            return ("Waiting for the game",
+                    "Open SpiritVale and log into a character — "
+                    "I'll pick it up from there.")
+        return ("Go kill something",
+                "I'll start tracking as soon as you gain XP.")
 
     def _resumo_rede(self) -> str:
         """Prefixo pro rodape: prova de vida enquanto a barra nao foi achada."""
@@ -423,6 +428,8 @@ class XPAnalyzer(ctk.CTk):
                         "waiting for the game",
                         "open the game and gain a little XP — your progress "
                         "only arrives when it changes")
+                elif tipo == "espera":
+                    self.janela.esperando(*dados)
                 elif tipo == "deteccao":
                     self.janela.rodape(dados)
                 elif tipo == "fonte":
@@ -440,6 +447,13 @@ class XPAnalyzer(ctk.CTk):
         self.janela.atualizar_bloco("job", leitura["job_nivel"],
                                     leitura["job_pct"], r.eta("job"),
                                     r.taxa("job"))
+        # chegou no fim do jogo: o rodape para de falar de ritmo e comemora,
+        # porque nao ha mais proximo nivel pra medir
+        if self.janela.tudo_no_maximo:
+            self.janela.rodape("🏆  class 150 and job 70 — you've maxed "
+                               "everything there is")
+            return
+
         marca = "PAUSED · " if self.pausado else ""
         pacote = self.monitor.ultimo
         if leitura.get("estimado"):

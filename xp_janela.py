@@ -24,6 +24,14 @@ TEXTO_SUB = "#8b93a7"
 FONTE = "Segoe UI"
 
 
+def _mistura(fundo: str, frente: str, quanto: float) -> str:
+    """Cor entre duas, em hex. `quanto`=0 devolve o fundo, 1 devolve a frente."""
+    a = tuple(int(fundo[i:i + 2], 16) for i in (1, 3, 5))
+    b = tuple(int(frente[i:i + 2], 16) for i in (1, 3, 5))
+    return "#%02x%02x%02x" % tuple(
+        round(x + (y - x) * quanto) for x, y in zip(a, b))
+
+
 class JanelaXP(ctk.CTkToplevel):
     """Sobreposicao sem borda, sempre no topo, que voce arrasta pra onde quiser.
 
@@ -44,7 +52,7 @@ class JanelaXP(ctk.CTkToplevel):
         ctk.set_widget_scaling(self.escala_ui)
         self.overrideredirect(True)
         self.attributes("-topmost", True)
-        self.attributes("-alpha", 0.92)
+        self.attributes("-alpha", self.ALPHA)
         self.resizable(False, False)
 
         corpo = ctk.CTkFrame(self, fg_color=CARTAO, corner_radius=12)
@@ -61,6 +69,11 @@ class JanelaXP(ctk.CTkToplevel):
         ctk.CTkButton(topo, text="⟳", width=26, height=26, fg_color="transparent",
                       hover_color=BORDA, text_color=TEXTO_SUB, font=(FONTE, 15),
                       command=self._zerar).pack(side="right", padx=(0, 2))
+        self.botao_compacto = ctk.CTkButton(
+            topo, text="▭", width=26, height=26, fg_color="transparent",
+            hover_color=BORDA, text_color=TEXTO_SUB, font=(FONTE, 14),
+            command=self._alternar_compacto)
+        self.botao_compacto.pack(side="right", padx=(0, 2))
         self.botao_pausa = ctk.CTkButton(
             topo, text="⏸", width=26, height=26, fg_color="transparent",
             hover_color=BORDA, text_color=TEXTO_SUB, font=(FONTE, 14),
@@ -75,16 +88,31 @@ class JanelaXP(ctk.CTkToplevel):
                           command=lambda d=passo: self._zoom(d)
                           ).pack(side="right", padx=(0, 1))
         self.pausado = False
+        self.compacto = False
+        self._tem_dados = False
+        self._teto = {"base": False, "job": False}
+        self._painel = None
+        self._pulso = 0.0
+        self._animacao = None
+
+        # A janela tem tres caras, e mostrar a errada e o que fazia ela parecer
+        # quebrada: antes da primeira leitura ela exibia dois blocos vazios com
+        # "?" e um grafico em branco, como se algo tivesse falhado. Agora cada
+        # momento tem a sua tela.
+        self.painel_espera = self._montar_espera(corpo)
+        self.painel_dados = ctk.CTkFrame(corpo, fg_color="transparent")
+        self.painel_compacto = self._montar_compacto(corpo)
 
         # um bloco por barra: cada uma tem o proprio tempo pro nivel seguinte,
         # que era o que faltava — antes o job cabia numa linha solta no rodape
         self.blocos = {}
         for qual, rotulo, cor in (("base", "CLASS XP", VERDE),
                                   ("job", "JOB XP", ACENTO)):
-            self.blocos[qual] = self._bloco(corpo, rotulo, cor, qual)
+            self.blocos[qual] = self._bloco(self.painel_dados, rotulo, cor, qual)
 
         # grafico com as duas curvas, nas mesmas cores dos blocos
-        self.grafico = tk.Canvas(corpo, width=int(340 * self.escala_ui),
+        self.grafico = tk.Canvas(self.painel_dados,
+                                 width=int(340 * self.escala_ui),
                                  height=int(155 * self.escala_ui), bg=CARTAO2,
                                  highlightthickness=0, bd=0)
         self.grafico.pack(padx=16, pady=(4, 6))
@@ -96,7 +124,7 @@ class JanelaXP(ctk.CTkToplevel):
         #               cheia faz cada linha nascer maior que a janela
         #   anchor="w"  o padrao do CTkLabel e centralizar, e ai o excesso
         #               vaza dos DOIS lados de uma vez
-        self.detalhe = ctk.CTkLabel(corpo, text="", font=(FONTE, 12),
+        self.detalhe = ctk.CTkLabel(self.painel_dados, text="", font=(FONTE, 12),
                                     text_color=TEXTO_SUB, justify="left",
                                     anchor="w",
                                     wraplength=self._largura_texto())
@@ -120,9 +148,135 @@ class JanelaXP(ctk.CTkToplevel):
         self._largura = int(self.winfo_reqwidth() / escala)
         self._altura = int(self.winfo_reqheight() / escala)
         self.geometry(f"{self._largura}x{self._altura}")
+        # so aqui: _trocar_painel chama _ajustar(), que precisa do tamanho ja medido
+        self._trocar_painel("espera", animar=False)
 
     LARGURA_BASE = 340        # a coluna do conteudo, que o grafico define
     PADDING = 16
+
+    # -- as tres telas ----------------------------------------------------
+
+    def _montar_espera(self, pai):
+        """Antes da primeira leitura: convida, em vez de parecer quebrada."""
+        quadro = ctk.CTkFrame(pai, fg_color="transparent")
+        interno = ctk.CTkFrame(quadro, fg_color=CARTAO2, corner_radius=10)
+        interno.pack(fill="x", padx=16, pady=(4, 12))
+
+        # o ponto que respira: um sinal silencioso de que o programa esta vivo
+        # e esperando, nao travado
+        self.pulso = tk.Canvas(interno, width=int(10 * self.escala_ui),
+                               height=int(10 * self.escala_ui), bg=CARTAO2,
+                               highlightthickness=0, bd=0)
+        self.pulso.pack(pady=(20, 0))
+        self.pulso.create_oval(1, 1, int(9 * self.escala_ui),
+                               int(9 * self.escala_ui), fill=VERDE,
+                               outline="", tags="ponto")
+
+        self.espera_titulo = ctk.CTkLabel(
+            interno, text="Go kill something", font=(FONTE, 17, "bold"),
+            text_color=TEXTO)
+        self.espera_titulo.pack(padx=20, pady=(12, 2))
+        self.espera_texto = ctk.CTkLabel(
+            interno, text="I'll start tracking as soon as you gain XP",
+            font=(FONTE, 12), text_color=TEXTO_SUB, justify="center",
+            wraplength=self._largura_texto())
+        self.espera_texto.pack(padx=20, pady=(0, 22))
+
+        for alvo in (quadro, interno, self.espera_titulo, self.espera_texto,
+                     self.pulso):
+            alvo.bind("<Button-1>", self._pegar)
+            alvo.bind("<B1-Motion>", self._arrastar)
+        return quadro
+
+    def _montar_compacto(self, pai):
+        """Modo pequeno: so os tempos, lado a lado, pra ficar fora do caminho."""
+        quadro = ctk.CTkFrame(pai, fg_color="transparent")
+        linha = ctk.CTkFrame(quadro, fg_color=CARTAO2, corner_radius=10)
+        linha.pack(fill="x", padx=16, pady=(2, 14))
+
+        self.compacto_itens = {}
+        for qual, rotulo, cor in (("base", "CLASS", VERDE), ("job", "JOB", ACENTO)):
+            caixa = ctk.CTkFrame(linha, fg_color="transparent")
+            caixa.pack(side="left", padx=16, pady=12)
+            titulo = ctk.CTkLabel(caixa, text=rotulo, font=(FONTE, 10, "bold"),
+                                  text_color=cor)
+            titulo.pack(anchor="w")
+            tempo = ctk.CTkLabel(caixa, text="—", font=(FONTE, 20, "bold"),
+                                 text_color=cor)
+            tempo.pack(anchor="w")
+            self.compacto_itens[qual] = {"caixa": caixa, "tempo": tempo}
+            for alvo in (caixa, titulo, tempo):
+                alvo.bind("<Button-1>", self._pegar)
+                alvo.bind("<B1-Motion>", self._arrastar)
+
+        # aparece so quando os dois chegam no teto: ai nao ha tempo pra mostrar,
+        # e o espaco vira comemoracao em vez de um "—" sem sentido
+        self.compacto_maximo = ctk.CTkLabel(
+            linha, text="", font=(FONTE, 13, "bold"), text_color=LARANJA,
+            justify="center", wraplength=self._largura_texto())
+
+        for alvo in (quadro, linha):
+            alvo.bind("<Button-1>", self._pegar)
+            alvo.bind("<B1-Motion>", self._arrastar)
+        return quadro
+
+    def _trocar_painel(self, nome: str, animar: bool = True) -> None:
+        """Mostra uma das telas. Trocar reencolhe a janela de proposito.
+
+        `_ajustar` so cresce, o que e certo durante a operacao normal (evita
+        tremer a cada atualizacao) e errado aqui: sem zerar, a janela ficaria
+        do tamanho da tela completa depois de ir pro modo compacto.
+        """
+        if nome == self._painel:
+            return
+        for painel in (self.painel_espera, self.painel_dados,
+                       self.painel_compacto):
+            painel.pack_forget()
+        alvo = {"espera": self.painel_espera, "dados": self.painel_dados,
+                "compacto": self.painel_compacto}[nome]
+        alvo.pack(fill="both", expand=True)
+        self._painel = nome
+        self._largura = self._altura = 1
+        self._ajustar()
+        if nome == "espera":
+            self._respirar()
+        if animar:
+            self._surgir()
+
+    # -- movimento --------------------------------------------------------
+
+    ALPHA = 0.92
+
+    def _surgir(self) -> None:
+        """Transicao curta entre telas: some e volta, em vez de piscar seco."""
+        passos = [0.55, 0.66, 0.77, 0.86, self.ALPHA]
+
+        def passo(i: int = 0) -> None:
+            if i >= len(passos) or not self.winfo_exists():
+                return
+            self.attributes("-alpha", passos[i])
+            self.after(28, lambda: passo(i + 1))
+
+        self.attributes("-alpha", 0.45)
+        passo()
+
+    def _respirar(self) -> None:
+        """O ponto da tela de espera pulsando devagar.
+
+        So roda enquanto essa tela esta visivel — animacao em painel escondido
+        e trabalho jogado fora, e em overlay sobre jogo isso custa quadro.
+        """
+        if self._animacao is not None:
+            self.after_cancel(self._animacao)
+            self._animacao = None
+        if self._painel != "espera" or not self.winfo_exists():
+            return
+        import math
+        self._pulso = (self._pulso + 0.09) % (2 * math.pi)
+        brilho = (math.sin(self._pulso) + 1) / 2          # 0..1
+        self.pulso.itemconfigure("ponto", fill=_mistura(CARTAO2, VERDE,
+                                                        0.25 + 0.75 * brilho))
+        self._animacao = self.after(45, self._respirar)
 
     def _largura_texto(self) -> int:
         """Onde a linha do rodape deve quebrar, ja descontado o padding."""
@@ -173,6 +327,13 @@ class JanelaXP(ctk.CTkToplevel):
 
     def atualizar_bloco(self, qual: str, nivel: int, pct: float | None,
                         eta: float | None, taxa: float | None) -> None:
+        # chegou leitura: a tela de convite ja cumpriu o papel dela
+        self._tem_dados = True
+        self._teto[qual] = (nivel >= self.TETO.get(qual, 10**9)
+                            and pct is not None and pct >= 99.9)
+        self._atualizar_compacto(qual, nivel, eta, self._teto[qual])
+        self._decidir_painel()
+
         bloco = self.blocos[qual]
         bloco["nivel"].configure(text=f"level {nivel}")
 
@@ -205,6 +366,55 @@ class JanelaXP(ctk.CTkToplevel):
         bloco["rodape"].configure(
             text=f"{pct:.1f}% done  ·  to {nivel + 1}  ·  {ritmo}")
 
+
+    def _alternar_compacto(self) -> None:
+        self.compacto = not self.compacto
+        self.botao_compacto.configure(text="▬" if self.compacto else "▭")
+        self._decidir_painel()
+
+    def _decidir_painel(self) -> None:
+        """Escolhe a tela pelo que existe pra mostrar, nao pelo que o usuario
+        clicou por ultimo: sem leitura nenhuma, o modo compacto mostraria dois
+        travessoes e nada mais."""
+        if not self._tem_dados:
+            self._trocar_painel("espera")
+        else:
+            self._trocar_painel("compacto" if self.compacto else "dados")
+
+    def esperando(self, titulo: str = "", texto: str = "") -> None:
+        """Volta pra tela de convite, opcionalmente com outra mensagem."""
+        self._tem_dados = False
+        if titulo:
+            self.espera_titulo.configure(text=titulo)
+        if texto:
+            self.espera_texto.configure(text=texto)
+        self._decidir_painel()
+
+    def _atualizar_compacto(self, qual: str, nivel: int, eta: float | None,
+                            no_teto: bool) -> None:
+        item = self.compacto_itens[qual]
+        if no_teto:
+            # no maximo nao ha tempo pra mostrar; a caixa sai da linha em vez
+            # de ocupar espaco com um "—" que nao quer dizer nada
+            item["caixa"].pack_forget()
+        else:
+            if not item["caixa"].winfo_ismapped():
+                item["caixa"].pack(side="left", padx=16, pady=12)
+            item["tempo"].configure(
+                text=motor_xp.formatar_tempo(eta) if eta else "—")
+
+        no_maximo = all(self._teto.get(q) for q in ("base", "job"))
+        if no_maximo:
+            self.compacto_maximo.configure(text="🏆  all maxed out")
+            if not self.compacto_maximo.winfo_ismapped():
+                self.compacto_maximo.pack(padx=18, pady=14)
+        elif self.compacto_maximo.winfo_ismapped():
+            self.compacto_maximo.pack_forget()
+
+    @property
+    def tudo_no_maximo(self) -> bool:
+        """Classe e job os dois no teto — nao ha mais nada a estimar."""
+        return all(self._teto.values())
 
     def _ajustar(self) -> None:
         """Cresce a janela se o conteudo passou a nao caber.
