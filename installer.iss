@@ -49,8 +49,13 @@ Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#ExeName}"; Tasks: desktopicon
 
 [Run]
+; `shellexec` is required, not cosmetic: this installer runs unelevated (per
+; user, by design) and the app asks for administrator in its manifest. Plain
+; CreateProcess cannot start an elevated process from a non-elevated one and
+; fails with code 740 — "the requested operation requires elevation".
+; ShellExecute knows how to raise the UAC prompt instead.
 Filename: "{app}\{#ExeName}"; Description: "Launch {#AppName} now"; \
-    Flags: nowait postinstall skipifsilent
+    Flags: nowait postinstall skipifsilent shellexec
 
 [UninstallDelete]
 ; settings live here; they go away with the uninstall
