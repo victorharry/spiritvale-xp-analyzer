@@ -5,12 +5,26 @@ Mostra quanto falta pro proximo nivel de classe e de job, com XP por hora e um
 grafico do ritmo, numa janelinha que voce arrasta por cima do jogo.
 
 
-LEITURA EXATA (recomendado): instale o Npcap
---------------------------------------------
+COMO O PROGRAMA LE SEU PROGRESSO
+-------------------------------
 
-Com o Npcap instalado, o XP Analyzer le o nivel e o XP direto dos pacotes que o
-servidor do jogo ja manda pro seu computador. E o valor exato, e voce nao
-precisa digitar nada.
+Ele le os pacotes que o servidor do jogo ja manda pro seu computador. Sao o
+nivel e o XP exatos, sem voce digitar nada.
+
+Pra isso o Windows exige uma de duas coisas — escolha a que preferir:
+
+  A) Instalar o Npcap (uma vez so). Depois o XP Analyzer abre normal,
+     sem nenhuma tela de permissao.
+
+  B) Nao instalar nada, e abrir o XP Analyzer COMO ADMINISTRADOR
+     (botao direito no atalho > Executar como administrador). Nesse caso
+     o Windows pede confirmacao toda vez que voce abrir.
+
+A opcao A da menos incomodo no dia a dia. A B nao instala nada.
+
+
+SE ESCOLHER O NPCAP
+-------------------
 
     1. baixe em  https://npcap.com/#download
     2. na instalacao:
@@ -22,24 +36,20 @@ precisa digitar nada.
 E o mesmo Npcap que o Spirit Vale Overlay pede, com as mesmas opcoes. Se voce
 ja usa aquele, nao precisa instalar de novo.
 
-Sem o Npcap o programa continua funcionando: ele le a barra de XP da memoria do
-jogo e pergunta seu nivel uma vez, no primeiro uso.
-
-
 O que o programa faz e o que ele nao faz
 ----------------------------------------
 
 Faz:
-  - le a memoria do processo do jogo (somente leitura)
   - le os pacotes de rede que ja estao chegando nesta maquina
 
 Nao faz:
-  - nao escreve nada na memoria do jogo
+  - nao le nem escreve a memoria do jogo (nao ha uma linha de codigo
+    capaz disso no programa)
   - nao envia, injeta nem modifica pacote nenhum
   - nao automatiza nada dentro do jogo: nao clica, nao move o mouse, nao
     aperta tecla
 
-A captura e passiva e nao promiscua: so o trafego desta maquina, so leitura.
+A captura e passiva: so o trafego desta maquina, so leitura.
 
 
 Nao aparece nada?

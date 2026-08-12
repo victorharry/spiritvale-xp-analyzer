@@ -245,5 +245,19 @@ conferir("XP absoluto", lido.xp if lido else None, 12345)
 conferir("nivel de job", lido.nivel_job if lido else None, 18)
 conferir("XP de job", lido.xp_job if lido else None, 678)
 
+# -- o caminho sem Npcap --------------------------------------------------
+
+print("\ncaptura por raw socket — dispensa instalar, mas exige administrador:")
+import bruto
+
+# aqui nao ha cabecalho Ethernet: o pacote ja chega no cabecalho IP
+puro = ipv4(udp(b"conteudo", origem=1234, destino=5678))
+conferir("pacote_ip devolve intacto", pcap.pacote_ip(puro, bruto.ENLACE), puro)
+lido_puro = ip.analisar(pcap.pacote_ip(puro, bruto.ENLACE))
+conferir("e as portas saem certas",
+         (lido_puro.porta_origem, lido_puro.porta_destino), (1234, 5678))
+conferir("declara enlace CRU, nao Ethernet", bruto.ENLACE, pcap.ENLACE_CRU)
+conferir("so se oferece quando ha elevacao", bruto.disponivel(), bruto.elevado())
+
 print("\n" + ("FALHAS: " + ", ".join(falhas) if falhas else "TUDO OK"))
 sys.exit(1 if falhas else 0)

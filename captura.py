@@ -15,6 +15,7 @@ from __future__ import annotations
 import threading
 import time
 
+import bruto
 import fishnet
 import ip
 import litenetlib
@@ -24,6 +25,30 @@ from personagem import Progresso
 
 INTERVALO_PORTAS = 1.0          # com que frequencia pergunto as portas ao Windows
 NOME_PROCESSO = "SpiritVale.exe"
+
+
+class SemCaptura(pcap.ErroPcap):
+    """Nenhum dos dois caminhos esta disponivel — e o usuario tem que escolher."""
+
+
+def abrir_captura():
+    """Abre a captura pelo caminho que estiver disponivel.
+
+    Sao dois, com friccoes opostas, e por isso os dois existem:
+
+      Npcap        instala um driver uma vez, e depois o app abre normal
+      raw socket   nao instala nada, mas exige administrador toda vez
+
+    O Npcap vem primeiro de proposito: quem ja o tem nunca ve uma tela de UAC.
+    """
+    if pcap.disponivel():
+        return pcap.abrir()
+    if bruto.disponivel():
+        return bruto.abrir()
+    raise SemCaptura(
+        "para ler o progresso e preciso capturar a rede desta maquina, e ha "
+        "dois jeitos: instalar o Npcap (https://npcap.com, uma vez so) ou "
+        "abrir o XP Analyzer como administrador.")
 
 
 class Monitor:
@@ -85,9 +110,9 @@ class Monitor:
 
     def _rodar(self) -> None:
         try:
-            sessao = pcap.abrir()
-        except pcap.NpcapAusente as erro:
-            self.estado = "sem npcap"
+            sessao = abrir_captura()
+        except SemCaptura as erro:
+            self.estado = "sem captura"
             self._avisar(str(erro))
             return
         except pcap.ErroPcap as erro:
@@ -132,15 +157,16 @@ class Monitor:
         finally:
             self._sessao = None
             sessao.fechar()
-            if self.estado not in ("falhou", "sem npcap"):
+            if self.estado not in ("falhou", "sem captura"):
                 self.estado = "parado"
 
     def _processar(self, quadro: bytes, enlace: int, portas: set[int],
                    remontador, splits, cacador) -> None:
-        bruto = pcap.pacote_ip(quadro, enlace)
-        if not bruto:
+        # NAO chamar de `bruto`: sombrearia o modulo de captura por raw socket
+        pacote_ip = pcap.pacote_ip(quadro, enlace)
+        if not pacote_ip:
             return
-        datagrama = ip.analisar(bruto)
+        datagrama = ip.analisar(pacote_ip)
         if datagrama is None or not datagrama.envolve(portas):
             return
         self.pacotes += 1
@@ -159,8 +185,13 @@ def diagnostico() -> list[str]:
     linhas = []
     try:
         linhas.append(f"Npcap: {pcap.versao()}")
-    except pcap.ErroPcap as erro:
-        linhas.append(f"Npcap: AUSENTE — {erro}")
+    except pcap.ErroPcap:
+        linhas.append("Npcap: nao instalado")
+        if bruto.elevado():
+            linhas.append("raw socket: DISPONIVEL (rodando como administrador)")
+        else:
+            linhas.append("raw socket: indisponivel (precisa de administrador)")
+            linhas.append("  -> instale o Npcap OU rode como administrador")
         return linhas
     try:
         escolhida = pcap.escolher()
