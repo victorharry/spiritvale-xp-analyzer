@@ -499,6 +499,9 @@ class XPAnalyzer(ctk.CTk):
 
 def main() -> None:
     settings.prepare_console()
+    # before anything else: it is what lets the installer notice this copy is
+    # running and ask for it to be closed, instead of dying on a locked DLL
+    settings.announce_running()
     ctk.set_appearance_mode("dark")
     try:
         app = XPAnalyzer()

@@ -31,6 +31,14 @@ UninstallDisplayIcon={app}\{#ExeName}
 ; The wizard's final page is the one place the user is guaranteed to read,
 ; so that is where the "run as administrator" note goes
 InfoAfterFile=SETUP.txt
+; Installing over a running copy used to fail in the middle of the file copy,
+; with "DeleteFile failed; code 5" on a DLL the running program was holding.
+; The app publishes these mutexes while it lives (settings.announce_running),
+; so Setup finds out BEFORE touching a single file and asks for it to be
+; closed. Two names because the Global one crosses the elevation boundary --
+; the app runs elevated, this installer does not -- and the plain one is the
+; fallback for when the app could not create the Global one.
+AppMutex=Global\XPAnalyzerRunning,XPAnalyzerRunning
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
