@@ -8,7 +8,7 @@
 
 #define AppName "XP Analyzer"
 ; keep in step with updates.py — verify_build.py refuses to package a mismatch
-#define AppVersion "2.1.0"
+#define AppVersion "2.2.0"
 #define Publisher "victorharry"
 #define ExeName "XP Analyzer.exe"
 

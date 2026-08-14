@@ -58,6 +58,12 @@ def enxerga(nome):
     return bool(h)
 
 
+# Nome proprio deste teste, e nao o de producao, de proposito. Com o nome real
+# o teste passa a depender do estado da maquina: basta o XP Analyzer estar
+# aberto (inclusive rodando pelo fonte, que o Build.bat nao mata) e ele acusa
+# falha em codigo que esta certo. Ja aconteceu, e cancelou um build.
+NOME_REAL = settings.MUTEX_NAME          # guardado antes de trocar
+settings.MUTEX_NAME = f"XPAnalyzerTest{os.getpid()}"
 nome_local = settings.MUTEX_NAME
 nome_global = f"Global\\{nome_local}"
 conferir("nao existe antes de anunciar", enxerga(nome_local), False)
@@ -75,8 +81,8 @@ import subprocess
 segunda = subprocess.run(
     [sys.executable, "-c",
      "import sys; sys.path.insert(0, r'%s'); import settings; "
-     "print(settings.announce_running())"
-     % str(Path(__file__).resolve().parent.parent)],
+     "settings.MUTEX_NAME = %r; print(settings.announce_running())"
+     % (str(Path(__file__).resolve().parent.parent), nome_local)],
     capture_output=True, text=True, timeout=60)
 conferir("uma segunda copia se reconhece como repetida",
          segunda.stdout.strip(), "False")
@@ -87,8 +93,10 @@ if iss.exists():
                        iss.read_text(encoding="utf-8", errors="replace"),
                        re.MULTILINE)
     declarados = [n.strip() for n in achado.group(1).split(",")] if achado else []
+    # aqui vale o nome DE PRODUCAO, nao o do teste: e justamente a checagem de
+    # que o Python e o instalador continuam falando do mesmo mutex
     conferir("installer.iss procura os mesmos nomes",
-             declarados, [nome_global, nome_local])
+             declarados, [f"Global\\{NOME_REAL}", NOME_REAL])
 else:
     print("  (installer.iss nao encontrado, pulando)")
 
