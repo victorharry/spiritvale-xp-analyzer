@@ -136,3 +136,63 @@ class Tracker:
         if self.start is None or not self.amostras:
             return 0.0
         return self.amostras[-1][0] - self.start
+
+
+@dataclass
+class GoldTracker:
+    """How much gold came in this session, and how fast.
+
+    Only RISES count. Gold is the one number here that can go down, and it goes
+    down for reasons that have nothing to do with farming: repairing, buying
+    potions, one visit to a vendor. Counting the drops would let a single
+    shopping trip erase an hour of earnings, or worse, report a negative rate
+    while the player is standing on a pile of loot.
+
+    So `gained` is the sum of the positive steps, and `total` is simply the
+    latest reading. They answer different questions and both are worth showing:
+    one is what this session produced, the other is what is in the pocket.
+    """
+
+    window_minutes: float = 15.0
+    gained: int = 0
+    total: int | None = None
+    _previous: int | None = None
+    amostras: list[tuple[float, int]] = field(default_factory=list)
+    start: float | None = None
+
+    def record(self, coins: int, agora: float | None = None) -> None:
+        agora = time.time() if agora is None else agora
+        if self._previous is not None and coins > self._previous:
+            self.gained += coins - self._previous
+        self._previous = coins
+        self.total = coins
+        if self.start is None:
+            self.start = agora
+        self.amostras.append((agora, self.gained))
+        limit = agora - self.window_minutes * 60
+        while len(self.amostras) > 2 and self.amostras[0][0] < limit:
+            self.amostras.pop(0)
+
+    def rate(self) -> float | None:
+        """Gold per hour over the recent window. None while it is too early."""
+        if len(self.amostras) < 2:
+            return None
+        span = self.amostras[-1][0] - self.amostras[0][0]
+        if span < 30:                     # under 30s says nothing
+            return None
+        entrou = self.amostras[-1][1] - self.amostras[0][1]
+        return max(0.0, entrou / span * 3600)
+
+
+def format_gold(value: float | int | None) -> str:
+    """Gold is a big number in a small window: 1,174,612 becomes 1.17M."""
+    if value is None:
+        return "—"
+    value = float(value)
+    sinal = "-" if value < 0 else ""
+    value = abs(value)
+    if value >= 1_000_000:
+        return f"{sinal}{value / 1_000_000:.2f}M"
+    if value >= 10_000:
+        return f"{sinal}{value / 1000:.1f}k"
+    return f"{sinal}{int(value):,}"

@@ -37,6 +37,8 @@ DEFAULTS = {
     "xp_necessario": {},
     # every estimate collected per level; the value used is their median
     "xp_amostras": {},
+    # show the gold block. On by default; the "$" button turns it off
+    "mostrar_ouro": True,
     # ask GitHub for a newer release at startup (see updates.py)
     "update_check": True,
     # the version whose notice the user closed; it is not shown again

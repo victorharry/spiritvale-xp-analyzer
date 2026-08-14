@@ -16,6 +16,7 @@ import threading
 import time
 
 import rawsocket
+import coins as coins_mod
 import fishnet
 import ip
 import litenetlib
@@ -61,6 +62,7 @@ class Monitor:
         self._lock = threading.Lock()
         self._latest: Progress | None = None
         self._received_at = 0.0
+        self._wallet: coins_mod.Wallet | None = None
         self._thread: threading.Thread | None = None
         self._session: pcap.Session | None = None
         self.state = "parado"
@@ -76,6 +78,12 @@ class Monitor:
     def latest(self) -> Progress | None:
         with self._lock:
             return self._latest
+
+    @property
+    def wallet(self) -> coins_mod.Wallet | None:
+        """Latest gold reading, or None while none has arrived."""
+        with self._lock:
+            return self._wallet
 
     @property
     def age(self) -> float:
@@ -186,6 +194,22 @@ class Monitor:
                     progress = hunter.feed(payload)
                     if progress is not None:
                         self._publish(progress)
+                    self._look_for_coins(payload)
+
+    def _look_for_coins(self, payload: bytes) -> None:
+        """Tries to read gold out of the same payload the hunter just saw.
+
+        Needs a CharacterData reading first, and that is not a limitation to
+        work around: the level and job level from it are what tell this packet
+        apart from five unrelated integers (see coins.decode).
+        """
+        known = self._latest
+        if known is None:
+            return
+        wallet = coins_mod.decode(payload, known.level, known.job_level)
+        if wallet is not None:
+            with self._lock:
+                self._wallet = wallet
 
 
 def diagnose() -> list[str]:

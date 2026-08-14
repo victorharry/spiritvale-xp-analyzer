@@ -19,6 +19,7 @@ BORDA = "#262c3a"
 ACENTO = "#3b82f6"
 VERDE = "#22c55e"
 LARANJA = "#f59e0b"
+OURO = "#e8b84b"
 TEXTO = "#e6eaf2"
 TEXTO_SUB = "#8b93a7"
 FONTE = "Segoe UI"
@@ -41,13 +42,16 @@ class Overlay(ctk.CTkToplevel):
     """
 
     def __init__(self, pai, ao_fechar=None, ao_zerar=None, ao_pausar=None,
-                 ao_corrigir_nivel=None, ao_zoom=None, escala=1.0):
+                 ao_corrigir_nivel=None, ao_zoom=None, escala=1.0,
+                 ao_alternar_ouro=None, mostrar_ouro=True):
         super().__init__(pai, fg_color=CARTAO)
         self.ao_fechar = ao_fechar
         self.ao_zerar = ao_zerar
         self.ao_pausar = ao_pausar
         self.ao_corrigir_nivel = ao_corrigir_nivel
         self.ao_zoom = ao_zoom
+        self.ao_alternar_ouro = ao_alternar_ouro
+        self.mostrar_ouro = bool(mostrar_ouro)
         self.escala_ui = float(escala)
         ctk.set_widget_scaling(self.escala_ui)
         self.overrideredirect(True)
@@ -82,6 +86,14 @@ class Overlay(ctk.CTkToplevel):
             hover_color=BORDA, text_color=TEXTO_SUB, font=(FONTE, 14),
             command=self._alternar_pausa)
         self.botao_pausa.pack(side="right", padx=(0, 2))
+        # liga e desliga o bloco de ouro. Dourado quando ligado, para o estado
+        # ser legivel sem precisar procurar o bloco na janela
+        self.botao_ouro = ctk.CTkButton(
+            topo, text="$", width=24, height=26, fg_color="transparent",
+            hover_color=BORDA,
+            text_color=OURO if self.mostrar_ouro else TEXTO_SUB,
+            font=(FONTE, 14, "bold"), command=self._alternar_ouro)
+        self.botao_ouro.pack(side="right", padx=(0, 2))
         # Zoom: a janela foi dimensionada num monitor 4K e ocupa espaco demais
         # em telas menores. Aqui voce encolhe/aumenta tudo junto.
         for text, passo in (("+", 0.1), ("−", -0.1)):
@@ -115,6 +127,14 @@ class Overlay(ctk.CTkToplevel):
         for qual, label, cor in (("base", "CLASS XP", VERDE),
                                   ("job", "JOB XP", ACENTO)):
             self.blocos[qual] = self._bloco(self.painel_dados, label, cor, qual)
+
+        # Fora de self.blocos de proposito: ouro nao tem level, nao tem teto e
+        # nao tem tempo pro proximo. Tudo que percorre self.blocos assume as
+        # tres coisas, e enfiar o ouro ali quebraria cada um desses lugares.
+        self.bloco_ouro = self._bloco(self.painel_dados, "GOLD", OURO, "ouro",
+                                      clicavel=False)
+        self.bloco_ouro["eta"].configure(text="—")
+        self.bloco_ouro["rodape"].configure(text="waiting for a drop...")
 
         # grafico com as duas curvas, nas mesmas cores dos blocos
         self.grafico = tk.Canvas(self.painel_dados,
@@ -155,6 +175,7 @@ class Overlay(ctk.CTkToplevel):
         self._altura = int(self.winfo_reqheight() / escala)
         self.geometry(f"{self._largura}x{self._altura}")
         # so aqui: _trocar_painel chama _ajustar(), que precisa do size ja medido
+        self._aplicar_visibilidade_ouro()
         self._trocar_painel("espera", animar=False)
 
     LARGURA_BASE = 340        # a coluna do payload, que o grafico define
@@ -201,7 +222,8 @@ class Overlay(ctk.CTkToplevel):
         linha.pack(fill="x", padx=16, pady=(2, 14))
 
         self.compacto_itens = {}
-        for qual, label, cor in (("base", "CLASS", VERDE), ("job", "JOB", ACENTO)):
+        for qual, label, cor in (("base", "CLASS", VERDE), ("job", "JOB", ACENTO),
+                                  ("ouro", "GOLD", OURO)):
             caixa = ctk.CTkFrame(linha, fg_color="transparent")
             caixa.pack(side="left", padx=16, pady=12)
             titulo = ctk.CTkLabel(caixa, text=label, font=(FONTE, 10, "bold"),
@@ -354,7 +376,8 @@ class Overlay(ctk.CTkToplevel):
         self.detalhe.configure(text=text)
         self._ajustar()
 
-    def _bloco(self, pai, label: str, cor: str, qual: str) -> dict:
+    def _bloco(self, pai, label: str, cor: str, qual: str,
+               clicavel: bool = True) -> dict:
         frame = ctk.CTkFrame(pai, fg_color=CARTAO2, corner_radius=10)
         frame.pack(fill="x", padx=16, pady=(0, 8))
 
@@ -368,8 +391,9 @@ class Overlay(ctk.CTkToplevel):
         # O numero do level nao esta na barra (ela guarda so o preenchimento),
         # entao vem do que voce informou. Clicar nele permite corrigir sem ter
         # que open_capture o config na mao.
-        level.configure(cursor="hand2")
-        level.bind("<Button-1>", lambda _e, q=qual: self._corrigir(q))
+        if clicavel:
+            level.configure(cursor="hand2")
+            level.bind("<Button-1>", lambda _e, q=qual: self._corrigir(q))
 
         eta = ctk.CTkLabel(frame, text="—", font=(FONTE, 30, "bold"),
                            text_color=cor)
@@ -380,7 +404,8 @@ class Overlay(ctk.CTkToplevel):
         for alvo in (frame, linha, eta, rodape):
             alvo.bind("<Button-1>", self._pegar)
             alvo.bind("<B1-Motion>", self._arrastar)
-        return {"level": level, "eta": eta, "rodape": rodape, "cor": cor}
+        return {"frame": frame, "level": level, "eta": eta,
+                "rodape": rodape, "cor": cor}
 
     # level maximo de cada barra: chegando ali, nao ha next_packet level pra estimar
     TETO = {"base": 150, "job": 70}
@@ -470,6 +495,55 @@ class Overlay(ctk.CTkToplevel):
         bloco["rodape"].configure(
             text=f"{pct:.1f}% done  ·  to {level + 1}  ·  {ritmo}")
 
+
+    def atualizar_ouro(self, total: int | None, ganho: int,
+                       rate: float | None) -> None:
+        """Ouro atual, quanto entrou nesta session e a que ritmo.
+
+        Os dois numeros respondem perguntas diferentes e por isso os dois
+        aparecem: o total e o que esta no bolso, o ganho e o que esta sessao
+        produziu. Mostrar so um deles sempre deixa alguem sem resposta.
+        """
+        if total is None:
+            return
+        self.bloco_ouro["level"].configure(text=f"{total:,}")
+        # nao passa por _mostrar_tempo: aquilo mexe em self.blocos, onde o ouro
+        # de proposito nao esta
+        self.bloco_ouro["eta"].configure(
+            text=f"+{motor_xp.format_gold(ganho)}", text_color=OURO,
+            font=(FONTE, self.FONTE_TEMPO, "bold"))
+        self.bloco_ouro["rodape"].configure(
+            text=f"{motor_xp.format_gold(rate)}/h" if rate
+                 else "measuring rate...")
+        item = self.compacto_itens["ouro"]
+        item["tempo"].configure(text=f"+{motor_xp.format_gold(ganho)}")
+        self._ajustar()
+
+    def _alternar_ouro(self) -> None:
+        self.mostrar_ouro = not self.mostrar_ouro
+        self.botao_ouro.configure(
+            text_color=OURO if self.mostrar_ouro else TEXTO_SUB)
+        self._aplicar_visibilidade_ouro()
+        if self.ao_alternar_ouro:
+            self.ao_alternar_ouro(self.mostrar_ouro)
+
+    def _aplicar_visibilidade_ouro(self) -> None:
+        """Mostra ou esconde o ouro nas duas telas de uma vez."""
+        bloco = self.bloco_ouro["frame"]
+        caixa = self.compacto_itens["ouro"]["caixa"]
+        if self.mostrar_ouro:
+            if not bloco.winfo_ismapped():
+                # antes do grafico, senao ele reaparece embaixo de tudo
+                bloco.pack(fill="x", padx=16, pady=(0, 8), before=self.grafico)
+            if not caixa.winfo_ismapped():
+                caixa.pack(side="left", padx=16, pady=12)
+        else:
+            bloco.pack_forget()
+            caixa.pack_forget()
+        # esconder libera altura, e _ajustar so cresce: sem zerar, a janela
+        # ficaria com o vazio do bloco que saiu
+        self._largura = self._altura = 1
+        self._ajustar()
 
     def _alternar_compacto(self) -> None:
         self.compacto = not self.compacto
@@ -730,6 +804,9 @@ class Overlay(ctk.CTkToplevel):
         for bloco in self.blocos.values():
             bloco["eta"].configure(text="—", text_color=TEXTO_SUB)
             bloco["rodape"].configure(text="measuring...")
+        self.bloco_ouro["eta"].configure(text="—", text_color=TEXTO_SUB)
+        self.bloco_ouro["rodape"].configure(text="waiting for a drop...")
+        self.compacto_itens["ouro"]["tempo"].configure(text="—")
         self.rodape("session restarted")
 
     def avisar(self, message: str, detalhe: str = "") -> None:

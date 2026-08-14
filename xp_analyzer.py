@@ -89,11 +89,16 @@ class XPAnalyzer(ctk.CTk):
         self._pico: dict[str, int] = {}
         self.shift = 0.0     # seconds pausados, descontados do relogio
         self._pausa_em = 0.0
+        self.ouro = motor_xp.GoldTracker(
+            window_minutes=float(self.cfg.get("xp_janela_minutos", 15)))
         self.janela = Overlay(self, ao_fechar=self.encerrar,
                                ao_zerar=self.zerar, ao_pausar=self.pausar,
                                ao_corrigir_nivel=self.corrigir_nivel,
                                ao_zoom=self.guardar_zoom,
-                               escala=float(self.cfg.get('xp_escala', 1.0)))
+                               escala=float(self.cfg.get('xp_escala', 1.0)),
+                               ao_alternar_ouro=self.guardar_ouro,
+                               mostrar_ouro=bool(
+                                   self.cfg.get("mostrar_ouro", True)))
         pos = self.cfg.get("xp_overlay_pos") or []
         self.janela.posicionar(*(int(p) for p in pos)) if len(pos) == 2 \
             else self.janela.posicionar(60, 60)
@@ -148,6 +153,10 @@ class XPAnalyzer(ctk.CTk):
         self.cfg["xp_escala"] = escala
         settings.save(self.cfg)
 
+    def guardar_ouro(self, mostrar: bool):
+        self.cfg["mostrar_ouro"] = mostrar
+        settings.save(self.cfg)
+
     def corrigir_nivel(self, qual: str):
         """Clicar no level mostra de onde vem o numero daquele bloco.
 
@@ -191,6 +200,8 @@ class XPAnalyzer(ctk.CTk):
     def zerar(self):
         self.rastreador = motor_xp.Tracker(
             window_minutes=float(self.cfg.get("xp_janela_minutos", 15)))
+        self.ouro = motor_xp.GoldTracker(
+            window_minutes=float(self.cfg.get("xp_janela_minutos", 15)))
         self.shift = 0.0
         self._pausa_em = 0.0
 
@@ -227,6 +238,9 @@ class XPAnalyzer(ctk.CTk):
                     self.fila.put(("erro", sem_leitura))
             else:
                 sem_leitura = 0
+                wallet = self.monitor.wallet
+                if wallet is not None and not self.pausado:
+                    self.ouro.record(wallet.coins, time.time() - self.shift)
                 self._aprender_no_level_up(packet)
                 self._niveis_da_rede(None)
                 reading = self._leitura_da_rede(packet)
@@ -466,6 +480,9 @@ class XPAnalyzer(ctk.CTk):
 
     def _mostrar(self, reading: dict):
         r = self.rastreador
+        if self.ouro.total is not None:
+            self.janela.atualizar_ouro(self.ouro.total, self.ouro.gained,
+                                       self.ouro.rate())
         self.janela.atualizar_bloco("base", reading["base_nivel"],
                                     reading["base_pct"], r.eta("base"),
                                     r.rate("base"))
